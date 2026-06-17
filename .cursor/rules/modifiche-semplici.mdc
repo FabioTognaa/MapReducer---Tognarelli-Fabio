@@ -1,0 +1,40 @@
+---
+description: Modifiche richieste dall'utente devono restare semplici e leggibili
+alwaysApply: true
+---
+
+# Modifiche semplici e intuitive
+
+Quando implementi una modifica **esplicitamente richiesta dall'utente**, privilegia chiarezza e semplicità rispetto a soluzioni elaborate.
+
+## Principi
+
+1. **Diff minimo** — Cambia solo ciò che serve per soddisfare la richiesta; non rifattorizzare codice non coinvolto.
+2. **Leggibilità prima di astuzia** — Preferisci codice lineare e autoesplicativo a helper, macro o astrazioni “furbe”.
+3. **Niente over-engineering** — Evita layer extra, pattern generici o gestione errori difensiva per casi irrilevanti.
+4. **Convenzioni del progetto** — Segui stile, naming e struttura già presenti nel file o nel modulo.
+
+## Esempi
+
+```c
+// ❌ EVITARE: helper per una sola riga, diff più ampio del necessario
+static int is_valid_fd(int fd) { return fd >= 0; }
+if (!is_valid_fd(pipe_fd)) return -1;
+
+// ✅ PREFERIRE: condizione diretta, immediata da capire
+if (pipe_fd < 0) return -1;
+```
+
+```c
+// ❌ EVITARE: generalizzazione prematura
+typedef int (*io_handler_t)(void *ctx, const void *buf, size_t n);
+// ... callback, struct di contesto, registrazione handler ...
+
+// ✅ PREFERIRE: logica esplicita nel punto d'uso, se basta per la richiesta
+ssize_t n = read(fd, buf, len);
+if (n < 0) return -1;
+```
+
+## Quando segnalare un'alternativa
+
+Se la richiesta spinge verso complessità non necessaria, implementa la versione più semplice che soddisfa il requisito e, se utile, indica brevemente un'alternativa più robusta **senza** applicarla senza consenso.

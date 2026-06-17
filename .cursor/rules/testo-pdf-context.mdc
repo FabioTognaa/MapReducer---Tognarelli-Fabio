@@ -1,0 +1,27 @@
+---
+description: Leggi Testo.pdf come specifica di progetto prima di ogni task
+alwaysApply: true
+---
+
+# Contesto obbligatorio: Testo.pdf
+
+All'inizio di **ogni** conversazione o task in questo progetto, leggi `Testo.pdf` (root del repo) **prima** di proporre codice, architettura o risposte tecniche.
+
+## Workflow
+
+1. Apri e leggi `Testo.pdf` con lo strumento Read.
+2. Usalo come **fonte autorevole** per requisiti, vincoli, API, protocolli pipe e criteri di valutazione.
+3. Se il PDF e il codice locale divergono, segnalalo e privilegia il PDF salvo indicazione esplicita dell'utente.
+
+## Quando rileggerlo
+
+- Nuova sessione o nuovo task
+- Domande su requisiti, comportamento atteso o consegna d'esame
+- Implementazione di `libmr`, mapper/reducer, pipe I/O, Makefile o test
+
+## Cosa non fare
+
+- Non assumere requisiti non presenti nel PDF
+- Non inventare formati di messaggio non documentati (es. serializzazione righe) senza allinearti al PDF e documentare le scelte
+
+Percorso: `Testo.pdf`
