@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 /* Handle opaco di una elaborazione. */
+struct mr;
 typedef struct mr *mr_t;
 
 /*
@@ -34,6 +35,8 @@ typedef struct {
 
 	const char *log_file;
 } mr_attr_t;
+
+
 
 /*
  * Riga logica di un file, vista dalla funzione mapper.
@@ -143,4 +146,5 @@ int mr_create(
 int mr_start(mr_t mr, const char *input_path, const char *output_path);
 int mr_destroy(mr_t mr);
 
+#include "mr_internal.h"
 #endif

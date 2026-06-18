@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
-#include "io.h"
+#include "../include/io.h"
 
 
 
@@ -109,7 +109,8 @@ int mr_write_pair(int fd, char *token, void *value, size_t value_size, size_t to
 
     
     //scrittura del token
-    if((ssize_t nt = writen(fd, token, (size_t)header.token_len)) <= 0){
+    ssize_t nt = writen(fd, token, (size_t)header.token_len);
+    if(nt <= 0){
         perror("Errore: scrittura del token sulla pipe non riuscita");
         return ERROR_SYSTEM;
     }
@@ -117,7 +118,8 @@ int mr_write_pair(int fd, char *token, void *value, size_t value_size, size_t to
 
     //scrittura del valore
     if(header.value_len > 0){
-        if((ssize_t nv = writen(fd, value, (size_t)header.value_len)) <= 0){
+        ssize_t nv = writen(fd, value, (size_t)header.value_len);
+        if(nv <= 0){
             perror("Errore: scrittura del value sulla pipe non riuscita");
             return ERROR_SYSTEM;
         }
@@ -438,7 +440,8 @@ int mr_write_result(int fd, char *token, void *value, size_t value_size, size_t 
     }
 
     //scrittura dell'header sulla pipe
-    if((ssize_t nh = writen(fd, &header, sizeof(header))) < 0){
+    ssize_t nh = writen(fd, &header, sizeof(header));
+    if(nh < 0){
         perror("Errore: scrittura dell'header sulla pipe reducer -> main non riuscita");
         return ERROR_SYSTEM;
     }

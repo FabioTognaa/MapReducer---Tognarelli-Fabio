@@ -2,7 +2,7 @@
 #define IO_H
 
 #include <sys/types.h>
-#include "mr.h"
+#include "../include/mr.h"
 
 #define MR_MAX_TOKEN_LEN   (1 << 20)   /* 1 MiB */
 #define MR_MAX_VALUE_LEN   (64 << 20)  /* 64 MiB */
