@@ -1,5 +1,7 @@
 #ifndef MR_H
 #define MR_H
+#define DEFAULT_QUEUE_SIZE 64
+
 
 #include <stddef.h>
 

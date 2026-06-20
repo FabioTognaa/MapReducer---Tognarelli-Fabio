@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <errno.h>
 
-#define DEFAULT_QUEUE_SIZE 64
 
 static int mr_fail_inval(void)
 {
