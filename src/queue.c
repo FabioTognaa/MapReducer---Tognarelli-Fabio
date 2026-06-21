@@ -3,15 +3,6 @@
 #include <threads.h>
 #include <stdio.h>
 
-//struttura della coda thrd safe
-typedef struct {
-    void **items;                   //puntatore della coda
-    size_t cap, head, tail, count;  //testa,coda,n elementi attuali
-    mtx_t mtx;                      //mutex lock
-    cnd_t not_full, not_empty;      //cond variables
-    int closed;                     // flag per chiudere la coda 
-} mr_queue_t;
-
 
 //inizializza una coda
 int mr_queue_init(mr_queue_t *q, ssize_t cap){
