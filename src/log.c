@@ -1,5 +1,4 @@
 
-#include "log.h"
 #include "io.h"
 
 //creazione e gestione di un file di log per il monitoraggio del mapreducer

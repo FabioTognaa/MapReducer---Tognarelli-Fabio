@@ -23,6 +23,7 @@ int mr_read_pair(int fd, char **token, void **value, size_t *value_size);
 int mr_read_line(int fd, mr_file_line_t *out);
 int mr_write_line(int fd, size_t file_name_len, char *file_name,
 		  unsigned long line_number, char *line, size_t line_len);
+int mr_send_input(const char *input_path, int mapper_write_fd);
 
 int mr_read_result(int fd, char **token, void **value, size_t *result_size);
 int mr_write_result(int fd, char *token, void *value, size_t value_size, size_t token_size);

@@ -84,6 +84,12 @@ int mr_create(mr_t *mr, const mr_attr_t *attr, mr_mapper_t mapper,
 	handle->user_arg = user_arg;
 	handle->started = 0;
 	handle->error = 0;
+	handle->log.fd = -1;
+
+	if (mr_create_log(&handle->log, (char *)handle->attr.log_file) < 0) {
+		free(handle);
+		return -1;
+	}
 
 	*mr = handle;
 	return 0;
@@ -94,6 +100,8 @@ int mr_destroy(mr_t mr)
 	if (mr == NULL)
 		return mr_fail_inval();
 
+	if (mr->log.fd >= 0)
+		mr_log_close(&mr->log);
 	free(mr);
 	return 0;
 }

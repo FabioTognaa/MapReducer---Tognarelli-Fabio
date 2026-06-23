@@ -1,3 +1,6 @@
+#ifndef LOG_H
+#define LOG_H
+
 #include <semaphore.h>
 #include <time.h>
 #include <errno.h>
@@ -37,3 +40,5 @@ int mr_log_write( mr_log_t *log, const char *process_name, size_t thrd_id, const
 
 //chiude il file di log
 int mr_log_close(mr_log_t *log);
+
+#endif

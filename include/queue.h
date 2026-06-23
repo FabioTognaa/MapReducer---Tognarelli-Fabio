@@ -1,3 +1,6 @@
+#include <stddef.h>
+#include <sys/types.h>
+#include <threads.h>
 
 //struttura della coda thrd safe
 typedef struct {

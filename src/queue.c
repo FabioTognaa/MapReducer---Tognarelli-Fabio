@@ -1,7 +1,8 @@
-#include "io.h"
+#include "queue.h"
 #include "mr.h"
-#include <threads.h>
+#include <stdlib.h>
 #include <stdio.h>
+#include <threads.h>
 
 
 //inizializza una coda
