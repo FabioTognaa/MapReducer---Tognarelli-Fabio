@@ -4,8 +4,8 @@
 
 
 
-//CONTROLLO ALFANUMERICO SU UNA STRINGA
-static int check_str(const char* str){
+//CONTROLLO ALFANUMERICO SUL NOME DI UN TOKEN
+static int check_tkn(const char* str){
 
     //stringa nulla
     if(str == NULL || *str == '\0'){
