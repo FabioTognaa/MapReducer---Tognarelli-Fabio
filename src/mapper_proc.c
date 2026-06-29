@@ -32,7 +32,7 @@ static int mapper_emit_pair(const char* token, const void* value, size_t value_s
     mapper_ctx_t *ctx = (mapper_ctx_t*)emit_arg;
 
     //valido il token
-    if(check_str(token) == -1){
+    if(check_tkn(token) == -1){
         ctx->error = 1;
         return -1;
     }
