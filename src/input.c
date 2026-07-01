@@ -37,7 +37,7 @@ int check_path(const char *path){
 }
 
 //ESTRAE DAL PATH IL NOME DI UN FILE/DIR
-char * str_extract(const char *path){
+static char * str_extract(const char *path){
     // Cerca l'ultimo '/' nel path
     char *file_name = strrchr(path, '/');
     
@@ -48,8 +48,7 @@ char * str_extract(const char *path){
 }
 
 //FUNZIONE PER ORDINARE IL BUFFER DI FILE DELLA DIR
-static int cmp_str(const void *a, const void *b)
-{
+static int cmp_str(const void *a, const void *b){
     return strcmp(*(const char * const *)a, *(const char * const *)b);
 }
 //ESPLORA UN FILE ED INVIA AL MAPPER UNA RIGA ALLA VOLTA

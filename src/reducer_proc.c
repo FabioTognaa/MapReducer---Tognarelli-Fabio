@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "reducer_proc.h"
 
+//TODO: fare in modo che la scrittura sul main non avvenga parallelamente ed in modo alfanumerico
 
 //ORDINAMENTO ALFANUMERICO DEI TOKEN NELLA LISTA DA PROCESSARE
 static int cmp_tkn(const void *a, const void *b){
