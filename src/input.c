@@ -56,7 +56,7 @@ static int send_one_file(const char *file_path, int mapper_write_fd){
     //apertura del file
     int fd;
     if((fd = open(file_path, O_RDONLY)) == -1){
-        perror("Errorre: open() del file in input non riuscita");
+        perror("Errore: open() del file in input non riuscita");
         return -1;
     }
 
@@ -85,6 +85,7 @@ static int send_one_file(const char *file_path, int mapper_write_fd){
         if(mr_write_line(mapper_write_fd, fname_len, (char *)fname, l_number, buff, len) != 0){
             free(buff);
             fclose(fp);
+
             perror("Errore: scrittura del file di input su pipe verso il mapper");
             return -1;
         } 
@@ -200,7 +201,7 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
     }
 
     if(path_type == SOM_ELSE){
-        perror("Errore: file di dati in iinput non valido");
+        perror("Errore: file di dati in input non valido");
         return -1;
     }
 

@@ -129,6 +129,15 @@ typedef int (*mr_reducer_t)(
 	void *user_arg
 );
 
+//tipo record: impacchetta le info dal reducer da scrivere sul file di output
+typedef struct{
+	char *token;
+	void *res;
+	size_t res_len;
+	size_t token_len;
+} record_from_reducer_t;
+
+
 int mr_attr_init(mr_attr_t *attr);
 int mr_attr_destroy(mr_attr_t *attr);
 

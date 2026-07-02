@@ -10,7 +10,7 @@ int mr_queue_init(mr_queue_t *q, ssize_t cap){
 
     //se la coda non fosse vuota
     if(q->items != NULL){
-        printf("Errore: coda passata in input non vuota");
+        fprintf(stderr, "Errore: coda passata in input non vuota");
         return -1;
     }
 
@@ -94,7 +94,7 @@ int mr_queue_pop(mr_queue_t *q, void **item){
 
     if (q->count == 0) {
         mtx_unlock(&q->mtx);
-        printf("coda chiusa");
+        fprintf(stderr, "coda chiusa");
         return -1;  
     }
 

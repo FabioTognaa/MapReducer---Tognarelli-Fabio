@@ -252,7 +252,7 @@ static int reducer_emit_result(const char *token, const void *result, size_t res
     if((rc = mr_write_result(STDOUT_FILENO, (char*)token, (void*)result, result_size, strlen(token))) == ERROR_SYSTEM){
         ctx->error = 1;
         mtx_unlock(&ctx->out_mtx);
-        fprintf(stderr, "Errore: mr_write_result recuder -> main");
+        fprintf(stderr, "Errore: mr_write_result reducer -> main");
         return -1;
     }
 

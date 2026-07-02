@@ -3,6 +3,7 @@
 #include "mapper_proc.h"
 #include "reducer_proc.h"
 #include "log.h"
+#include "mr_err.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -11,32 +12,6 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <fcntl.h>
-
-//macro per syscall con assegnamento
-#define CHECK_ASSIGN(result, expression, message) \
-do { \
-	if ((result = (expression)) == -1) { \
-		perror(message); \
-		return -1;	\
-	} \
-} while (0)
-
-//macro per syscall senza assegnamento
-#define CHECK_SYSCALL(expression, message) \
-do { \
-	if ((expression) == -1) { \
-		perror(message); \
-		return -1;\
-	} \
-} while (0)
-
-//tipo record: impacchetta le info dal reducer da scrivere sul file di output
-typedef struct{
-	char *token;
-	void *res;
-	size_t res_len;
-	size_t token_len;
-} record_from_reducer_t;
 
 
 //FA CLEANUP DEI RECORD SALVATI NEL MAIN
@@ -52,19 +27,59 @@ static void free_records(record_from_reducer_t *records, size_t n)
 }
 
 //FA LA WAITPID COMPLETA PER I PROCESSI FIGLI
-static int wait_children(pid_t pid_mapper, pid_t pid_reducer)
+static int wait_children(mr_t mr, pid_t pid_mapper, pid_t pid_reducer)
 {
     int sts_map, sts_red;
     if (waitpid(pid_mapper, &sts_map, 0) == -1 ||
         waitpid(pid_reducer, &sts_red, 0) == -1) {
-        perror("waitpid");
         return -1;
     }
     if (!WIFEXITED(sts_map) || !WIFEXITED(sts_red) ||
-        WEXITSTATUS(sts_map) != 0 || WEXITSTATUS(sts_red) != 0)
+        WEXITSTATUS(sts_map) != 0 || WEXITSTATUS(sts_red) != 0){
+			errno = EIO;
+			if (WIFSIGNALED(sts_map))
+    		mr_log_write(mr->log, "main", 0, "error", "mapper terminato dal segnale");
 
-        return -1;
+			if (WIFSIGNALED(sts_map))
+    			mr_log_write(mr->log, "main", 0, "error", "reducer terminato dal segnale");
+			return -1;
+		}
+		
     return 0;
+}
+
+//GESTIONE ERRORE DI UN PROCESSO FIGLIO
+void mr_child_fail(mr_log_t *log, const char *proc, const char *msg){
+
+	//scrittura dell'errore sul file di log
+	mr_log_write(log, proc, 0, "error", msg);
+	_exit(1);
+}
+
+//GESTIONE DEL CLEANUP PER MR_START
+int mr_start_cleanup(mr_t mr, mr_start_state_t *st, int saved_errno){
+	//chiusura delle pipe rimanenti
+	if(st->mapper_write_open)
+		close(st->mapper_write_fd);
+	if(st->reducer_read_open)
+		close(st->reducer_read_fd);
+
+	//chiudo il file di output se aperto
+	if((st->output_fd) >= 0)
+		close(st->output_fd);
+
+	//faccio free dei records da usare in scrittura sul file di output
+	free_records(st->records, st->n_records);
+
+	//faccio le waitpid in caso ci siano stati dei fork
+	if(st->children_forked)
+		if(wait_children(mr, st->pid_mapper, st->pid_reducer) != 0)
+			saved_errno = EIO;
+
+
+	//setto il nuovo errno
+	errno = saved_errno;
+	return -1;
 }
 
 
@@ -199,7 +214,7 @@ int mr_destroy(mr_t mr)
 int mr_start(mr_t mr, const char *input_path, const char *output_path){
 	//controllo validita' dati in input
 	if (mr == NULL || input_path == NULL || output_path == NULL)
-		return -1;		
+		return mr_fail_inval();		
 
 
 	//setto correttamente lo start
@@ -213,78 +228,168 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 	int mapper_to_reducer [2];	//mapper -> reducer
 	int reducer_to_main [2];		//reducer -> main
 
-	CHECK_SYSCALL(pipe(main_to_mapper), "pipe main_to_mapper");
-	CHECK_SYSCALL(pipe(mapper_to_reducer), "pipe mapper_to_reducer");
-	CHECK_SYSCALL(pipe(reducer_to_main), "pipe reducer_to_main");
+	//setup dello stato inziale per gestire gli errori
+	mr_start_state_t st;
+	st.mapper_write_open = 0;
+	st.reducer_read_open = 0;
+	st.output_fd = -1;
+	st.records = NULL;
+	st.n_records = 0;
+	st.children_forked = 0;
 
+
+
+	//inizializzazione delle pipe
+	if(pipe(main_to_mapper) == -1){
+		int saved = errno;
+		mr_log_write(&mr->log, "main", 0, "error", "pipe main_to_mapper");
+		errno = saved;
+		return -1;
+	};
+
+	if(pipe(mapper_to_reducer) == -1){
+		int saved = errno;
+		mr_log_write(&mr->log, "main", 0, "error", "pipe mapper_to_reducer");
+		close(main_to_mapper[0]);
+		close(main_to_mapper[1]);
+		errno = saved;
+		return -1;
+	};
+	
+	if(pipe(reducer_to_main) == -1){
+		int saved = errno;
+		mr_log_write(&mr->log, "main", 0, "error", "pipe reducer_to_main");
+		close(main_to_mapper[0]);
+		close(main_to_mapper[1]);
+		close(mapper_to_reducer[0]);
+		close(mapper_to_reducer[1]);
+
+		errno = saved;
+		return -1;
+	};
+	
+	//aggiorno i valori dello stato iniziale
+	st.mapper_write_fd = main_to_mapper[1];
+	st.mapper_write_open = 1;
+	st.reducer_read_fd = reducer_to_main[0];
+	st.reducer_read_open = 1;
+	
+	//log per la creazione con successo delle 3 pipe
 	mr_log_write(&mr->log, "main", 0, "pipe", "created 3 pipes");
 
-	//fork dei processi figli
+	//pid dei processi figli
 	pid_t pid_mapper;
 	pid_t pid_reducer;
 
-	//fork del mapper
-	CHECK_ASSIGN(pid_mapper, fork(), "fork su pid_mapper");
+	//fork del processo mapper
+	pid_mapper = fork();
+	if(pid_mapper == -1){
+		int saved = errno;
+		mr_log_write(&mr->log, "main", 0, "error", "fork del mapper fallita");
+		close(main_to_mapper[0]);
+		close(main_to_mapper[1]);
+		close(mapper_to_reducer[0]);
+		close(mapper_to_reducer[1]);
+		close(reducer_to_main[0]);
+		close(reducer_to_main[1]);
+		errno = saved;
+		return -1;
+	}
+	
 
 	mr_log_write(&mr->log, "main", 0, "fork", "mapper process created");
 
 	//dentro al proc. mapper
 	if(!pid_mapper){
-		//riassegno input e output
-		CHECK_SYSCALL(dup2(main_to_mapper[0], STDIN_FILENO), "dup2 mapper");
-		CHECK_SYSCALL(dup2(mapper_to_reducer[1], STDOUT_FILENO), "dup2 mapper");
-		
-		//chiudo il resto
-		CHECK_SYSCALL(close(main_to_mapper[0]), "close mapper");
-		CHECK_SYSCALL(close(main_to_mapper[1]), "close mapper");
-		CHECK_SYSCALL(close(mapper_to_reducer[0]), "close mapper");
-		CHECK_SYSCALL(close(mapper_to_reducer[1]), "close mapper");
-		CHECK_SYSCALL(close(reducer_to_main[0]), "close mapper");
-		CHECK_SYSCALL(close(reducer_to_main[1]), "close mapper");
+		if(dup2(main_to_mapper[0], STDIN_FILENO) == -1)
+			mr_child_fail(&mr->log, "mapper", "dup2 main_to_mapper stdin fallita");
+		if(dup2(mapper_to_reducer[1], STDOUT_FILENO) == -1)
+			mr_child_fail(&mr->log, "mapper", "dup2 mapper_to_reducer stdout fallita");
 
-		//start del mapper
+		if(close(main_to_mapper[0]) == -1)
+			mr_child_fail(&mr->log, "mapper", "close main_to_mapper in input fallita");
+		if(close(main_to_mapper[1]) == -1)
+			mr_child_fail(&mr->log, "mapper", "close main_to_mapper in output fallita");
+		if(close(mapper_to_reducer[0]) == -1)
+			mr_child_fail(&mr->log, "mapper", "close mapper_to_reducer in input fallita");
+		if(close(mapper_to_reducer[1]) == -1)
+			mr_child_fail(&mr->log, "mapper", "close mapper_to_reducer in output fallita");
+		if(close(reducer_to_main[0]) == -1)
+			mr_child_fail(&mr->log, "mapper", "close reducer_to_main in input fallita");
+		if(close(reducer_to_main[1]) == -1)
+			mr_child_fail(&mr->log, "mapper", "close reducer_to_main in output fallita");
+
 		_exit(mapper_process_main(mr) != 0);
 	}
 
-	//fork del reducer
-	CHECK_ASSIGN(pid_reducer, fork(), "fork su pid_reducer");
+	//fork del reducer con cleanup parziale del mapper
+	pid_reducer = fork();
+	if (pid_reducer == -1) {
+		int saved = errno;
+		mr_log_write(&mr->log, "main", 0, "error", "fork reducer failed");
+		close(main_to_mapper[0]);
+		close(main_to_mapper[1]);
+		close(mapper_to_reducer[0]);
+		close(mapper_to_reducer[1]);
+		close(reducer_to_main[0]);
+		close(reducer_to_main[1]);
+		(void)waitpid(pid_mapper, NULL, 0);   /* mapper già avviato */
+		errno = saved;
+		return -1;
+	}
 
+	
 
 	mr_log_write(&mr->log, "main", 0, "fork", "reducer process created");
 
 	//dentro al proc. reducer
 	if(!pid_reducer){
-		//riassegno input e output
-		CHECK_SYSCALL(dup2(mapper_to_reducer[0], STDIN_FILENO), "dup2 reducer");
-		CHECK_SYSCALL(dup2(reducer_to_main[1], STDOUT_FILENO), "dup2 reducer");
-		
-		CHECK_SYSCALL(close(mapper_to_reducer[0]), "close reducer");
-		CHECK_SYSCALL(close(mapper_to_reducer[1]), "close reducer");
-		CHECK_SYSCALL(close(reducer_to_main[0]), "close reducer");
-		CHECK_SYSCALL(close(reducer_to_main[1]), "close reducer");
-		CHECK_SYSCALL(close(main_to_mapper[0]), "close reducer");
-		CHECK_SYSCALL(close(main_to_mapper[1]), "close reducer");
-		
-		//start del reducer
+		if(dup2(mapper_to_reducer[0], STDIN_FILENO) == -1)
+			mr_child_fail(&mr->log, "reducer", "dup2 mapper_to_reducer stdin fallita");
+		if(dup2(reducer_to_main[1], STDOUT_FILENO) == -1)
+			mr_child_fail(&mr->log, "reducer", "dup2 reducer_to_main stdout fallita");
+
+		if(close(mapper_to_reducer[0]) == -1)
+			mr_child_fail(&mr->log, "reducer", "close mapper_to_reducer in input fallita");
+		if(close(mapper_to_reducer[1]) == -1)
+			mr_child_fail(&mr->log, "reducer", "close mapper_to_reducer in output fallita");
+		if(close(reducer_to_main[0]) == -1)
+			mr_child_fail(&mr->log, "reducer", "close reducer_to_main in input fallita");
+		if(close(reducer_to_main[1]) == -1)
+			mr_child_fail(&mr->log, "reducer", "close reducer_to_main in output fallita");
+		if(close(main_to_mapper[0]) == -1)
+			mr_child_fail(&mr->log, "reducer", "close main_to_mapper in input fallita");
+		if(close(main_to_mapper[1]) == -1)
+			mr_child_fail(&mr->log, "reducer", "close main_to_mapper in output fallita");
+
 		_exit(reducer_process_main(mr) != 0);
 	}
 	else{	//processo main
+
+		//aggiorno i valori dello starte value x gestione errori
+		st.pid_mapper = pid_mapper;
+		st.pid_reducer = pid_reducer; 
+		st.children_forked = 1;
 
 		CHECK_SYSCALL(close(mapper_to_reducer[0]), "close main");
 		CHECK_SYSCALL(close(mapper_to_reducer[1]), "close main");
 		CHECK_SYSCALL(close(reducer_to_main[1]), "close main");
 		CHECK_SYSCALL(close(main_to_mapper[0]), "close main");
 
+		//log per apertura file/dir di input
+		mr_log_write(&mr->log, "main", 0, "apertura file di input", NULL);
 
-		
 		size_t lines = 0;
 		//leggo le righe dai file in input
 		if(mr_send_input(input_path, main_to_mapper[1], &lines) == -1){
-			//cleanup
-			close(reducer_to_main[0]);
-			(void)wait_children(pid_mapper, pid_reducer);
-			return -1;
+			//cleanup con funzione e messaggio di log
+			int saved = errno;
+			mr_log_write(&mr->log, "main", 0, "error", "mr_send_input nel main fallito");
+			return mr_start_cleanup(mr, &st, saved);
 		}
+
+		//log per chiusura file/dir di input
+		mr_log_write(&mr->log, "main", 0, "chiusura file di input", NULL);
 
 		//log del numero di linee in input
 		char msg[64];
@@ -296,14 +401,14 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		size_t dim = 0, cap = 4;
 		record_from_reducer_t *record = malloc(cap * sizeof(record_from_reducer_t));
 		if(!record){
-			close(reducer_to_main[0]);
-			free_records(record, dim);
-			(void)wait_children(pid_mapper, pid_reducer);
-			return -1;
+			//cleanup con funzione e messaggio di log
+			int saved = errno;
+			mr_log_write(&mr->log, "main", 0, "error", "malloc iniziale dell'array di record fallita");
+			return mr_start_cleanup(mr, &st, saved);
 		}
 
 		//log lettura record
-		mr_log_write(&mr->log, "main", 0, "read", "reading final results from reducer");
+		mr_log_write(&mr->log, "main", 0, "read", "lettura dei risultati finali dei record");
 
 		//leggo i risultati del reducer
 		while(1){
@@ -311,10 +416,6 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 			char *token = NULL;
 			void *result = NULL;
 			size_t result_size = 0;
-			
-
-
-			
 
 			//uso funzione mr_read_result
 			int rr = mr_read_result(reducer_to_main[0], &token, &result, &result_size);
@@ -324,13 +425,15 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 
 			if(rr == -1){
 				if(close(reducer_to_main[0]) != 0){
-					free_records(record, dim);
-					perror("close reducer_to_main");
-    				return -1;
+					//cleanup con funzione e messaggio di log
+					int saved = errno;
+					mr_log_write(&mr->log, "main", 0, "error", "close reducer_to_main fallita");
+					return mr_start_cleanup(mr, &st, saved);
 				}
-				free_records(record, dim);
-				(void)wait_children(pid_mapper, pid_reducer);
-				return -1;
+				//cleanup con funzione e messaggio di log
+				int saved = errno;
+				mr_log_write(&mr->log, "main", 0, "error", "mr_read_result nel main fallita");
+				return mr_start_cleanup(mr, &st, saved);
 			}
 
 			//accumulo in un array di record per il file di output
@@ -342,8 +445,10 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 				if(!nr){
 					//chiudi fd rimanenti
 					if(close(reducer_to_main[0]) != 0){ 
-						perror("reducer_to_main");
-						return -1;
+						//cleanup con funzione e messaggio di log
+						int saved = errno;
+						mr_log_write(&mr->log, "main", 0, "error", "close di reducer_to_main fallita");
+						return mr_start_cleanup(mr, &st, saved);
 					}
 					free_records(record, dim);
 					(void)wait_children(pid_mapper, pid_reducer);
@@ -371,39 +476,44 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 
 		//chiudo comunicazione verso il reducer
 		if(close(reducer_to_main[0]) != 0){ 
-						perror("close reducer_to_main");
-						return -1;
-					}
+			int saved = errno;
+			mr_log_write(&mr->log, "main", 0, "error", "close di reducer_to_main fallita");
+			return mr_start_cleanup(mr, &st, saved);
+		}
+
 		//ordinamento lessicografico dei record per token
 		qsort(record, dim, sizeof(record_from_reducer_t), cmp_records);
 
-		
+		//log per l'apertura del file di output
 		mr_log_write(&mr->log, "main", 0, "output", "opening output file");
 
 		//apro file di output
 		int f_out;
 		if((f_out = open(output_path, O_WRONLY | O_CREAT | O_TRUNC, 0644)) == -1){ 
-			perror("open in mr_create");
-			return -1;
+			int saved = errno;
+			mr_log_write(&mr->log, "main", 0, "error", "open del file di output fallita");
+			return mr_start_cleanup(mr, &st, saved);
 		}
 
 		//scrivo sul file tutti i record in ordine lessicografico
 		for(size_t i = 0; i < dim; i++){
 			int cr;
 			if((cr = mr_write_result(f_out, record[i].token, record[i].res, record[i].res_len, record[i].token_len)) == ERROR_SYSTEM){
-				free_records(record, dim);
-				(void)wait_children(pid_mapper, pid_reducer);
-				return -1;
+				int saved = errno;
+				mr_log_write(&mr->log, "main", 0, "error", "mr_write_result fallita");
+				return mr_start_cleanup(mr, &st, saved);
 			}
 		}
 
 
+		//log per la chiusura del file di output
 		mr_log_write(&mr->log, "main", 0, "output", "closing output file");
 
 		//chiudere il file di output
 		if(close(f_out) != 0){ 
-			perror("close in mr_create");
-			return -1;
+			int saved = errno;
+			mr_log_write(&mr->log, "main", 0, "error", "close del file di output fallita");
+			return mr_start_cleanup(mr, &st, saved);
 		}
 
 		//cleanup del processo
