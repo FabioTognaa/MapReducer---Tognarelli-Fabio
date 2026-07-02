@@ -2,19 +2,22 @@
 #include "io.h"
 #include "mapper_proc.h"
 #include "reducer_proc.h"
+#include "log.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <string.h>
+#include <fcntl.h>
 
 //macro per syscall con assegnamento
 #define CHECK_ASSIGN(result, expression, message) \
 do { \
 	if ((result = (expression)) == -1) { \
 		perror(message); \
-		exit(EXIT_FAILURE); \
+		return -1;	\
 	} \
 } while (0)
 
@@ -23,7 +26,7 @@ do { \
 do { \
 	if ((expression) == -1) { \
 		perror(message); \
-		exit(EXIT_FAILURE); \
+		return -1;\
 	} \
 } while (0)
 
@@ -34,6 +37,37 @@ typedef struct{
 	size_t res_len;
 	size_t token_len;
 } record_from_reducer_t;
+
+
+//FA CLEANUP DEI RECORD SALVATI NEL MAIN
+static void free_records(record_from_reducer_t *records, size_t n)
+{
+    if (records == NULL)
+        return;
+    for (size_t i = 0; i < n; i++) {
+        free(records[i].token);
+        free(records[i].res);
+    }
+    free(records);
+}
+
+//FA LA WAITPID COMPLETA PER I PROCESSI FIGLI
+static int wait_children(pid_t pid_mapper, pid_t pid_reducer)
+{
+    int sts_map, sts_red;
+    if (waitpid(pid_mapper, &sts_map, 0) == -1 ||
+        waitpid(pid_reducer, &sts_red, 0) == -1) {
+        perror("waitpid");
+        return -1;
+    }
+    if (!WIFEXITED(sts_map) || !WIFEXITED(sts_red) ||
+        WEXITSTATUS(sts_map) != 0 || WEXITSTATUS(sts_red) != 0)
+
+        return -1;
+    return 0;
+}
+
+
 
 //FUNZIONE PER RESTITUIRE ERRORE DI DEFAULT
 static int mr_fail_inval(void)
@@ -167,6 +201,13 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 	if (mr == NULL || input_path == NULL || output_path == NULL)
 		return -1;		
 
+
+	//setto correttamente lo start
+	if(mr->started)
+		return mr_fail_inval();
+	
+		mr->started = 1;
+
 	//creazione delle pipe per la comunicazione tra processi
 	int main_to_mapper [2];			//main -> mapper
 	int mapper_to_reducer [2];	//mapper -> reducer
@@ -176,12 +217,16 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 	CHECK_SYSCALL(pipe(mapper_to_reducer), "pipe mapper_to_reducer");
 	CHECK_SYSCALL(pipe(reducer_to_main), "pipe reducer_to_main");
 
+	mr_log_write(&mr->log, "main", 0, "pipe", "created 3 pipes");
+
 	//fork dei processi figli
 	pid_t pid_mapper;
 	pid_t pid_reducer;
 
 	//fork del mapper
 	CHECK_ASSIGN(pid_mapper, fork(), "fork su pid_mapper");
+
+	mr_log_write(&mr->log, "main", 0, "fork", "mapper process created");
 
 	//dentro al proc. mapper
 	if(!pid_mapper){
@@ -198,12 +243,14 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		CHECK_SYSCALL(close(reducer_to_main[1]), "close mapper");
 
 		//start del mapper
-		mapper_process_main(mr);
-		_exit(0);
+		_exit(mapper_process_main(mr) != 0);
 	}
 
 	//fork del reducer
 	CHECK_ASSIGN(pid_reducer, fork(), "fork su pid_reducer");
+
+
+	mr_log_write(&mr->log, "main", 0, "fork", "reducer process created");
 
 	//dentro al proc. reducer
 	if(!pid_reducer){
@@ -219,8 +266,7 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		CHECK_SYSCALL(close(main_to_mapper[1]), "close reducer");
 		
 		//start del reducer
-		reducer_process_main(mr);
-		_exit(0);
+		_exit(reducer_process_main(mr) != 0);
 	}
 	else{	//processo main
 
@@ -229,19 +275,35 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		CHECK_SYSCALL(close(reducer_to_main[1]), "close main");
 		CHECK_SYSCALL(close(main_to_mapper[0]), "close main");
 
+
+		
+		size_t lines = 0;
 		//leggo le righe dai file in input
-		if(mr_send_input(input_path, main_to_mapper[1]) != 0){
+		if(mr_send_input(input_path, main_to_mapper[1], &lines) == -1){
 			//cleanup
-			//todo: chiususra fd rimasti e witpid sui figli gia' creati
-			mr_destroy(mr);
-			_exit(-1);
+			close(reducer_to_main[0]);
+			(void)wait_children(pid_mapper, pid_reducer);
+			return -1;
 		}
+
+		//log del numero di linee in input
+		char msg[64];
+		snprintf(msg, sizeof(msg), "lines sent to mapper: %zu", lines);
+		mr_log_write(&mr->log, "main", 0, "stats", msg);
+
 
 		//struttura per salvare i record in output dal reducer
 		size_t dim = 0, cap = 4;
 		record_from_reducer_t *record = malloc(cap * sizeof(record_from_reducer_t));
-		//todo: if(!record){.... return -1}
-		
+		if(!record){
+			close(reducer_to_main[0]);
+			free_records(record, dim);
+			(void)wait_children(pid_mapper, pid_reducer);
+			return -1;
+		}
+
+		//log lettura record
+		mr_log_write(&mr->log, "main", 0, "read", "reading final results from reducer");
 
 		//leggo i risultati del reducer
 		while(1){
@@ -251,6 +313,9 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 			size_t result_size = 0;
 			
 
+
+			
+
 			//uso funzione mr_read_result
 			int rr = mr_read_result(reducer_to_main[0], &token, &result, &result_size);
 
@@ -258,7 +323,13 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 				break;
 
 			if(rr == -1){
-				//TODO: credo si debba fare qualcosa in piu'
+				if(close(reducer_to_main[0]) != 0){
+					free_records(record, dim);
+					perror("close reducer_to_main");
+    				return -1;
+				}
+				free_records(record, dim);
+				(void)wait_children(pid_mapper, pid_reducer);
 				return -1;
 			}
 
@@ -269,31 +340,13 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 
 				//eventuale cleanup
 				if(!nr){
-					//chiudi record aperti
-					for(size_t i = 0; i < dim; i++){
-						free(record[i].token);
-						free(record[i].res);
-					}
-					free(record);
-
 					//chiudi fd rimanenti
-					CHECK_SYSCALL(close(reducer_to_main[0]), "close main");
-					
-					int sts_map, sts_red;
-					pid_t wm, wr;
-
-					//waitpid
-					CHECK_ASSIGN(wm, waitpid(pid_mapper, &sts_map, 0), "waitpid main");
-					CHECK_ASSIGN(wr, waitpid(pid_reducer, &sts_red, 0) "waitpid main");
-					
-					//check delle waitpid: stampo codici se ok, altrimenti esco con errore
-					if(WIFEXITED(sts_map) && WIFEXITED(sts_red)){ 
-                		printf("exit1: %d\nexit2: %d\n", WEXITSTATUS(sts_map), WEXITSTATUS(sts_red));
-            		}else{
-                		printf("Terminazione anomala di uno dei 2 figli\n");
-                		exit(EXIT_FAILURE);
-            		}
-				
+					if(close(reducer_to_main[0]) != 0){ 
+						perror("reducer_to_main");
+						return -1;
+					}
+					free_records(record, dim);
+					(void)wait_children(pid_mapper, pid_reducer);
 					return -1;
 				}
 
@@ -310,15 +363,56 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 			dim++;
 		}
 
-		//chiudo comunicazione verso il reducer
-		CHECK_SYSCALL(close(reducer_to_main[0]), "close in main");
+		//log per il numero totale di record prodotti
+		char msgg[64];
+		snprintf(msgg, sizeof(msgg), "numero di record prodotti: %zu", dim);
 
-		//TODO: ordinamento lessicografico dei record per token
+		mr_log_write(&mr->log, "main", 0, "stats", msgg);
+
+		//chiudo comunicazione verso il reducer
+		if(close(reducer_to_main[0]) != 0){ 
+						perror("close reducer_to_main");
+						return -1;
+					}
+		//ordinamento lessicografico dei record per token
 		qsort(record, dim, sizeof(record_from_reducer_t), cmp_records);
 
-		//todo: scrittura di ogni record in *output_path
+		
+		mr_log_write(&mr->log, "main", 0, "output", "opening output file");
+
+		//apro file di output
+		int f_out;
+		if((f_out = open(output_path, O_WRONLY | O_CREAT | O_TRUNC, 0644)) == -1){ 
+			perror("open in mr_create");
+			return -1;
+		}
+
+		//scrivo sul file tutti i record in ordine lessicografico
+		for(size_t i = 0; i < dim; i++){
+			int cr;
+			if((cr = mr_write_result(f_out, record[i].token, record[i].res, record[i].res_len, record[i].token_len)) == ERROR_SYSTEM){
+				free_records(record, dim);
+				(void)wait_children(pid_mapper, pid_reducer);
+				return -1;
+			}
+		}
+
+
+		mr_log_write(&mr->log, "main", 0, "output", "closing output file");
+
+		//chiudere il file di output
+		if(close(f_out) != 0){ 
+			perror("close in mr_create");
+			return -1;
+		}
+
+		//cleanup del processo
+		free_records(record, dim);
+		
+		//waitpid sui figli
+		if(wait_children(pid_mapper, pid_reducer) != 0)
+			mr->error = 1;
 	}
 
-	//wiatpid sui processi figli
 	return mr->error ? -1 : 0;
 }

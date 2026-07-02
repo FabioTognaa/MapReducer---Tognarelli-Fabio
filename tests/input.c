@@ -62,7 +62,7 @@ static int pipe_send_input(const char *path, int *read_fd)
 	}
 	if (pid == 0) {
 		close(p[0]);
-		_exit(mr_send_input(path, p[1]) != 0);
+		_exit(mr_send_input(path, p[1], NULL) != 0);
 	}
 	close(p[1]);
 	*read_fd = p[0];

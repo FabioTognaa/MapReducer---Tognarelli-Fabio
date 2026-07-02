@@ -51,6 +51,8 @@ static int mapper_emit_pair(const char* token, const void* value, size_t value_s
         return -1;
     }
 
+    ctx->pairs++;
+
     //rilascia il mutex
     mtx_unlock(&ctx->out_mtx);
 
@@ -169,7 +171,7 @@ int mapper_process_main(mr_t mr){
     }
 
     //log: creazione thrd reader
-    if(mr_log_write(ctx.log, "mapper", (size_t)thrd_current(), "thrd start", "thrd reader created") == -1){
+    if(mr_log_write(ctx.log, "mapper", 0, "thrd_start", "reader thread created") == -1){
 
         mr_queue_close(&ctx.queue);
         thrd_join(reader, NULL);
@@ -196,7 +198,7 @@ int mapper_process_main(mr_t mr){
         }
 
         //log: creazione thrd worker
-        if(mr_log_write(ctx.log, "mapper", (size_t)thrd_current(), "thrd start", "thrd worker created") == -1){
+        if(mr_log_write(ctx.log, "mapper", 0, "thrd_start", "worker thread created") == -1){
             mr_queue_close(&ctx.queue);
             thrd_join(reader, NULL);
             for (int j = 0; j < n_created; j++)
@@ -205,6 +207,7 @@ int mapper_process_main(mr_t mr){
             mtx_destroy(&ctx.out_mtx);
             return -1;
         }
+
         n_created++;
     }
     
@@ -221,6 +224,12 @@ int mapper_process_main(mr_t mr){
     }
     mr_queue_destroy(&ctx.queue);
     mtx_destroy(&ctx.out_mtx);
+    
+    //log per numero di coppie emesse dal mapper
+    char msg[64];
+    snprintf(msg, sizeof(msg), "Numero di coppie inviate dal mapper: %zu", ctx.pairs);
+    mr_log_write(ctx.log, "mapper", 0, "stats", msg);
+
     close(STDOUT_FILENO);
 
     if(ctx.error){
@@ -228,5 +237,6 @@ int mapper_process_main(mr_t mr){
         return -1;
     }
 
+    
     return 0;
 }

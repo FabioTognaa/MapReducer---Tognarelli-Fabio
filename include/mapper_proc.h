@@ -12,6 +12,7 @@ typedef struct{
     mr_mapper_t mapper;    //funzione mapper
     void *user_arg;         //argomenti passati a mapper
     size_t n_workers;       //n di workers per il mapper
+    size_t pairs;           //numero di coppie inviate dal mapper per il log file
     mr_queue_t queue;       //coda delle righe
     mtx_t out_mtx;          //mtx per scrivere e gesstire serializzazione in out
     mr_log_t *log;          //file di log per salvare logs

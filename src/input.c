@@ -94,11 +94,14 @@ static int send_one_file(const char *file_path, int mapper_write_fd){
     //chiudo tutto
     free(buff);
     fclose(fp);
-    return 0;
+    return l_number - 1;
 }
 
-//INVIA LE RIGHE DI INPUT AL MAPPER
-int mr_send_input(const char *input_path, int mapper_write_fd){
+//INVIA LE RIGHE DI INPUT AL MAPPER. RESTITUISCE 0/-1; IL CONTEGGIO RIGHE VA IN out_lines
+int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines){
+
+    if(out_lines != NULL)
+        *out_lines = 0;
 
     //determina il tipo di input_path
     int path_type;
@@ -110,12 +113,14 @@ int mr_send_input(const char *input_path, int mapper_write_fd){
     //caso file
     if(path_type == IS_FILE){
         int ris;
-        if((ris = send_one_file(input_path, mapper_write_fd)) != 0)
+        if((ris = send_one_file(input_path, mapper_write_fd)) == -1)
             return -1;
         if (close(mapper_write_fd) == -1){
             perror("Errore: chiusura del mapper non riuscita");
             return -1;
         }
+        if(out_lines != NULL)
+            *out_lines = (size_t)ris;
         return 0;
     }
     
@@ -167,9 +172,11 @@ int mr_send_input(const char *input_path, int mapper_write_fd){
         qsort(names, count, sizeof(char*), cmp_str);
 
         //lettura file per file 
+        size_t total_lines = 0;
         for (size_t i = 0; i < count; i++) {
             snprintf(full_path, sizeof(full_path), "%s/%s", input_path, names[i]);
-            if (send_one_file(full_path, mapper_write_fd) != 0) {
+            int tmp;
+            if ((tmp = send_one_file(full_path, mapper_write_fd)) == -1) {
                 for(size_t j = i; j < count; j++){
                     free(names[j]);
                 }
@@ -177,6 +184,7 @@ int mr_send_input(const char *input_path, int mapper_write_fd){
                 perror("Errore: uno dei file della dir non e' stato processato correttamente");
                 return -1;
             }
+            total_lines += (size_t)tmp;
             //libero lo spazio di quel file una volta finito il suo processamento
             free(names[i]);
         }
@@ -185,7 +193,9 @@ int mr_send_input(const char *input_path, int mapper_write_fd){
             perror("Errore: chiusura della pipe in scrittura verso il mapper non riuscita");
             return -1; 
         }
-        
+
+        if(out_lines != NULL)
+            *out_lines = total_lines;
         return 0;
     }
 

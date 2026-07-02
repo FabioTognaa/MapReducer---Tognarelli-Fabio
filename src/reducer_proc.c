@@ -342,7 +342,11 @@ int reducer_process_main(mr_t mr){
         return -1;
     }
 
-    //fase di raggruppamento
+    //log per il numero di token distinti creati
+    char msg[64];
+    snprintf(msg, sizeof(msg), "numero di token distinti: %zu", ctx.groups_len);
+    mr_log_write(ctx.log, "reducer", 0, "stats",  msg);
+
 
     //loop strutturato, per far lavorare tutti gli worker su uno o piu' token, a seconda se il numero di token sia maggiore del numero di thread
 
@@ -361,12 +365,13 @@ int reducer_process_main(mr_t mr){
         
         //creazione degli worker 
         for(size_t i = 0; i < batch; i++){
-            //popolo il work da passare alla funzione dello worker
+            //popolo il work da passare alla funzione del worker
             works[i].ctx = &ctx;
             works[i].g = &ctx.groups[start + i];
             if(thrd_create(&workers[i], reducer_worker_main, &works[i]) != thrd_success)
                 return -1;
         }
+
 
         //join degli worker
         for(int j = 0; j < batch; j++){
