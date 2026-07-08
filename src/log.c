@@ -18,7 +18,7 @@ int mr_create_log(mr_log_t *log, char *file_name){
 
     //puntatore nullo
     if(log == NULL){
-        perror("Errore: dati del file di log  in mr_create_log vuoti");
+        errno = EINVAL;
         return -1;
     }
 
@@ -54,7 +54,7 @@ int mr_log_write( mr_log_t *log, const char *process_name, size_t thrd_id, const
 
     //puntatore nullo
     if(log == NULL){
-        perror("Errore: dati del file di log  in mr_create_log vuoti");
+        errno = EINVAL;
         return -1;
     }
 
@@ -91,7 +91,7 @@ int mr_log_write( mr_log_t *log, const char *process_name, size_t thrd_id, const
 int mr_log_close(mr_log_t *log){
     //puntatore nullo
     if(log == NULL){
-        perror("Errore: dati del file di log  in mr_create_log vuoti");
+        errno = EINVAL;
         return -1;
     }
     

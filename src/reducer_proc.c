@@ -202,7 +202,8 @@ static int reader_mapper(void *args){
         
         //read fallito
         if(nr == ERROR_SYSTEM){
-            fprintf(stderr, "Errore: lettura della coppia in arrivo dal mapper non riuscita");
+            mr_log_write(ctx->log, "reducer", 0, "error", "lettura coppia in entrata reducer fallita");
+            ctx->error = 1;
             return -1;
         }
 
@@ -219,7 +220,8 @@ static int reader_mapper(void *args){
         if((n_aggr = add_or_create_group(&ctx->groups, &ctx->groups_len, in_token, in_value, in_value_size)) == -1){
             free(in_token);
             free(in_value);
-            fprintf(stderr, "Errore: aggiunta della coppia al raggruppamento fallita");
+            mr_log_write(ctx->log, "reducer", 0, "error", "aggiunta della coppia al raggruppamento fallita");
+            ctx->error = 1;
             return -1;
         }
 
@@ -243,7 +245,7 @@ static int reducer_emit_result(const char *token, const void *result, size_t res
     //lock del mutex
     if(mtx_lock(&ctx->out_mtx) == thrd_error){
         ctx->error = 1;
-        fprintf(stderr, "Errore: mtx_lock fallita in scrittura reducer -> main");
+        mr_log_write(ctx->log, "reducer", 0, "error", "mtx_lock fallita in scrittura reducer -> main");
         return -1;
     }
 
@@ -252,7 +254,8 @@ static int reducer_emit_result(const char *token, const void *result, size_t res
     if((rc = mr_write_result(STDOUT_FILENO, (char*)token, (void*)result, result_size, strlen(token))) == ERROR_SYSTEM){
         ctx->error = 1;
         mtx_unlock(&ctx->out_mtx);
-        fprintf(stderr, "Errore: mr_write_result reducer -> main");
+        mr_log_write(ctx->log, "reducer", 0, "error", "mr_write_result reducer -> main");
+        
         return -1;
     }
 
@@ -274,7 +277,7 @@ static int reducer_worker_main(void *arg){
 
     //cleanup se fallisce
     if(values == NULL){
-        fprintf(stderr, "Errore: malloc di values in scrittura reducer -> main");
+        mr_log_write(ctx->log, "reducer", 0, "error", "malloc di values in scrittura reducer -> main");
         for(size_t i = 0; i < g->count; i++){
             free(g->data[i]);
         }
@@ -332,12 +335,16 @@ int reducer_process_main(mr_t mr){
     thrd_t reader;
     int res;
     if(thrd_create(&reader, reader_mapper, &ctx) != thrd_success){
+        mr_log_write(ctx.log, "reducer", 0, "error", "creazione thrd reader fallita");
+        ctx.error = 1;
         mtx_destroy(&ctx.out_mtx);
         return -1;
     }
 
     //attendo che il reader abbia finito di leggere dal main
     if(thrd_join(reader, &res) != thrd_success || res != 0){
+        close(STDOUT_FILENO);
+        ctx.error = 1;
         mtx_destroy(&ctx.out_mtx);
         return -1;
     }
@@ -368,8 +375,10 @@ int reducer_process_main(mr_t mr){
             //popolo il work da passare alla funzione del worker
             works[i].ctx = &ctx;
             works[i].g = &ctx.groups[start + i];
-            if(thrd_create(&workers[i], reducer_worker_main, &works[i]) != thrd_success)
+            if(thrd_create(&workers[i], reducer_worker_main, &works[i]) != thrd_success){
+                ctx.error = 1;
                 return -1;
+            }
         }
 
 
@@ -388,7 +397,15 @@ int reducer_process_main(mr_t mr){
 
     //clenup del mutex e chiusura dello std input in entrata dal mapper
     mtx_destroy(&ctx.out_mtx);
-    close(STDOUT_FILENO);
+    
 
-    return ctx.error ? -1 : 0;
+    //in caso ci dosse stato un errore durante lo svolgimento del codice 
+    if(ctx.error){
+        mr_log_write(ctx.log, "reducer", 0, "error", "ctx.error == 1 nel reducer");
+        close(STDOUT_FILENO);
+        return -1;
+    }
+
+    close(STDOUT_FILENO);
+    return 0;
 }

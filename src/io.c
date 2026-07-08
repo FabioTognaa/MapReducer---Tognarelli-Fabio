@@ -42,11 +42,11 @@ ssize_t writen(int fd, void *buf, size_t n){
                 continue;
             }
             else{
-                perror("Errore durante la scrittura della pipe");
+                
                 return ERROR_SYSTEM;
             }
         }
-        if(!w) {perror("Errore durante la scrittura sulla pipe"); return ERROR_SYSTEM;}
+        if(!w) { return ERROR_SYSTEM;}
         ptr += w;               //incrementa puntatore al prossimo byte non ancora scritto
         left -= (size_t)w;      //decremento i byte mancanti
     }
@@ -65,7 +65,6 @@ ssize_t readn(int fd, void *buf, size_t n){
         if(w < 0){
             if(errno == EINTR)  //
                 continue;
-            perror("Errore durante la lettura della pipe");
             return ERROR_SYSTEM;
         }
         if(!w)
@@ -88,8 +87,14 @@ int mr_write_pair(int fd, char *token, void *value, size_t value_size, size_t to
     
     //validazione delle lunghezze dell'header
     if((mr_validate_len(header.token_len, MR_MAX_TOKEN_LEN)!= 0 || header.token_len == 0)){
-        perror("Errore nell'header in scrittura: lunghezza del token nulla o troppo grande"); return ERROR_SYSTEM;}
-    if((mr_validate_len(header.value_len, MR_MAX_VALUE_LEN)!= 0)){perror("Errore nell'header in scrittura: lunghezza troppo grande"); return ERROR_SYSTEM;}
+        errno = EINVAL; 
+        return ERROR_SYSTEM;
+    }
+
+    if((mr_validate_len(header.value_len, MR_MAX_VALUE_LEN)!= 0)){
+        errno = EINVAL; 
+        return ERROR_SYSTEM;
+    }
 
     
     //scrittura dell'header
@@ -98,12 +103,10 @@ int mr_write_pair(int fd, char *token, void *value, size_t value_size, size_t to
 
     //controllo scrittura dell'header
     if(nh < 0){
-        perror("Errore di sistema durante la scrittura del Mapper");
         return ERROR_SYSTEM;
     }
 
     if((size_t)nh < sizeof(header)){
-        perror("Scrittura incompleta dell'header");
         return ERROR_SYSTEM;
     }
 
@@ -111,7 +114,6 @@ int mr_write_pair(int fd, char *token, void *value, size_t value_size, size_t to
     //scrittura del token
     ssize_t nt = writen(fd, token, (size_t)header.token_len);
     if(nt <= 0){
-        perror("Errore: scrittura del token sulla pipe non riuscita");
         return ERROR_SYSTEM;
     }
 
@@ -120,7 +122,6 @@ int mr_write_pair(int fd, char *token, void *value, size_t value_size, size_t to
     if(header.value_len > 0){
         ssize_t nv = writen(fd, value, (size_t)header.value_len);
         if(nv <= 0){
-            perror("Errore: scrittura del value sulla pipe non riuscita");
             return ERROR_SYSTEM;
         }
     }
@@ -143,21 +144,21 @@ int mr_read_pair(int fd, char **token, void **value, size_t *value_size){
         return EOF_REACHED;
 
     if(nh < 0){
-        perror("Errore di sistema durante la lettura");
         return ERROR_SYSTEM;
     }
 
     if((size_t)nh < sizeof(header)){
-        perror("Errore di sistema: lettura dell'header della coppia incompleto");
+        /* Messaggio troncato: lunghezze/header non validi */
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
 
     if(mr_validate_len(header.token_len, MR_MAX_TOKEN_LEN) != 0 || header.token_len == 0){
-        perror("Errore nell'header in lettura: lunghezza del token nulla o troppo grande");
+        errno = EINVAL; 
         return ERROR_SYSTEM;
     }
     if(mr_validate_len(header.value_len, MR_MAX_VALUE_LEN) != 0){
-        perror("Errore nell'header in lettura: lunghezza del valore troppo grande");
+        errno = EINVAL; 
         return ERROR_SYSTEM;
     }
     
@@ -167,7 +168,7 @@ int mr_read_pair(int fd, char **token, void **value, size_t *value_size){
     //buffer per il token
     char* tbuf = malloc(tlen + 1); //lunghezza del token + '\0' di fine stringa
     if(!tbuf){
-        perror("Errore allocazione memoria del token buffer");
+        errno = ENOMEM;
         return ERROR_SYSTEM;
     }
 
@@ -175,26 +176,36 @@ int mr_read_pair(int fd, char **token, void **value, size_t *value_size){
     if(vlen > 0){
         vbuf = malloc(vlen);
         if(!vbuf){
+            errno = ENOMEM;
             free(tbuf);
-            perror("Errore allocazione memoria del value buffer");
             return ERROR_SYSTEM;
         }
     }
 
     ssize_t nt = readn(fd, tbuf, tlen);
-    if(nt < 0 || (size_t)nt < tlen) {
+    if(nt < 0) {
         free(tbuf);
         free(vbuf);
-        perror("Errore lettura token dalla pipe");
+        return ERROR_SYSTEM;
+    }
+    if((size_t)nt < tlen) {
+        free(tbuf);
+        free(vbuf);
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
 
     if(vlen > 0){
         ssize_t nv = readn(fd, vbuf, vlen);
-        if(nv < 0 || (size_t)nv < vlen) {
+        if(nv < 0) {
             free(tbuf);
             free(vbuf);
-            perror("Errore lettura value dalla pipe");
+            return ERROR_SYSTEM;
+        }
+        if((size_t)nv < vlen) {
+            free(tbuf);
+            free(vbuf);
+            errno = EINVAL;
             return ERROR_SYSTEM;
         }
     }
@@ -224,17 +235,21 @@ int mr_read_line(int fd, mr_file_line_t *out){
     if(nh == 0)
         return EOF_REACHED;
 
-    if(nh < 0 || (size_t)nh < sizeof(header)){
-        perror("Errore di lettura riga nel mapper: lettura dell'header");
+    if(nh < 0){
+        return ERROR_SYSTEM;
+    }
+    if((size_t)nh < sizeof(header)){
+        /* Messaggio troncato: header/len invalidi */
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
 
     if(header.line_len < 0){
-        perror("Errore in lettura linea nel mapper: lunghezza linea non valida");
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
     if(mr_validate_len(header.file_name_len, MR_MAX_NAME_LEN) != 0 || header.file_name_len == 0){
-        perror("Errore in lettura linea nel mapper: nome file non valido o troppo lungo");
+        errno = EINVAL; 
         return ERROR_SYSTEM;
     }
 
@@ -243,32 +258,42 @@ int mr_read_line(int fd, mr_file_line_t *out){
 
     char *fbuf = malloc(file_name_len + 1);
     if(!fbuf){
-        perror("Errore in lettura linea mapper: allocazione di memoria per file_name non riuscita");
+        errno = ENOMEM;
         return ERROR_SYSTEM;
     }
 
     ssize_t nfn = readn(fd, fbuf, file_name_len);
-    if(nfn < 0 || (size_t)nfn < file_name_len){
+    if(nfn < 0){
         free(fbuf);
-        perror("Errore in lettura linea mapper: lettura di file_name non riuscita");
+        return ERROR_SYSTEM;
+    }
+    if((size_t)nfn < file_name_len){
+        free(fbuf);
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
     fbuf[file_name_len] = '\0';
 
     char *lbuf = NULL;
     if(line_len > 0){
+        
         lbuf = malloc(line_len + 1);
         if(!lbuf){
+            errno = ENOMEM;
             free(fbuf);
-            perror("Errore in lettura linea mapper: allocazione di memoria per line non riuscita");
             return ERROR_SYSTEM;
         }
 
         ssize_t nl = readn(fd, lbuf, line_len);
-        if(nl < 0 || (size_t)nl < line_len){
+        if(nl < 0){
             free(fbuf);
             free(lbuf);
-            perror("Errore in lettura linea mapper: lettura di line non riuscita");
+            return ERROR_SYSTEM;
+        }
+        if((size_t)nl < line_len){
+            free(fbuf);
+            free(lbuf);
+            errno = EINVAL;
             return ERROR_SYSTEM;
         }
         lbuf[line_len] = '\0';
@@ -289,11 +314,11 @@ int mr_write_line(int fd, size_t file_name_len, char* file_name, unsigned long l
 
     //validazione delle lunghezze
     if(mr_validate_len(file_name_len, MR_MAX_NAME_LEN) != 0 || file_name_len == 0){
-        perror("Errore in scrittura linea nel main: lunghezza del file_name non valida");
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
     if(mr_validate_len(line_len, MR_MAX_LINE_LEN) != 0 || line_len < 0){
-        perror("Errore in scrittura linea nel main: lunghezza della linea non valida");
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
     int fn_len = (int)file_name_len;
@@ -303,30 +328,25 @@ int mr_write_line(int fd, size_t file_name_len, char* file_name, unsigned long l
 
     //spedisco al mapper i dati
     if((writen(fd, &fn_len, sizeof(fn_len))) < 0){
-        perror("Errore in scrittura dal main: file_name_len");
         return ERROR_SYSTEM;
     }; //lunghezza del file
 
 
     if((writen(fd, &l_len, sizeof(l_len))) < 0){
-        perror("Errore in scrittura dal main: line_len");
         return ERROR_SYSTEM;
     }; //lunghezza della linea
 
     if((writen(fd, &line_number, sizeof(line_number))) == -1){
-        perror("Errore in scrittura dal main: line_number");
         return ERROR_SYSTEM;
     }   //numero di linea
 
 
     if((writen(fd, file_name, file_name_len)) < 0){   
-        perror("Errore in scrittura dal main: file_name");
         return ERROR_SYSTEM;
     }   //nome del file
 
 
     if((writen(fd, line, line_len)) < 0){   
-        perror("Errore in scrittura dal main: line");
         return ERROR_SYSTEM;
     }   //contenuto della linea
 
@@ -344,23 +364,23 @@ int mr_read_result(int fd, char **token, void **value, size_t *result_size){
         return EOF_REACHED;
 
     if(nh < 0){
-        perror("Errore: header in lettura sulla pipe reducer -> main non valido");
         return ERROR_SYSTEM;
     }
 
     if((size_t)nh < sizeof(header)){
-        perror("Errore: lettura incompleta dell'header sulla pipe reducer -> main");
+        /* Messaggio troncato: header/len invalidi */
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
 
     //validazione delle lunghezze
     if(mr_validate_len(header.token_len, MR_MAX_TOKEN_LEN) != 0 || header.token_len == 0){
-        perror("Errore: lunghezza token in lettura sulla pipe reducer -> main non valido");
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
     
     if(mr_validate_len(header.value_len, MR_MAX_VALUE_LEN) != 0){
-        perror("Errore: lunghezza token in lettura sulla pipe reducer -> main non valido");
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
 
@@ -372,7 +392,7 @@ int mr_read_result(int fd, char **token, void **value, size_t *result_size){
     //buffer per il token
     char* tbuf = malloc(tlen + 1); //lunghezza del token + '\0' di fine stringa
     if(!tbuf){
-        perror("Errore: allocazione memoria del token buffer non riuscita sulla pipe reducer -> main");
+        errno = ENOMEM;
         return ERROR_SYSTEM;
     }
 
@@ -381,27 +401,37 @@ int mr_read_result(int fd, char **token, void **value, size_t *result_size){
     if(vlen > 0){
         vbuf = malloc(vlen);
         if(!vbuf){
+            errno = ENOMEM;
             free(tbuf);
-            perror("Errore: allocazione memoria del value buffer non riuscita sulla pipe reducer -> main");
             return ERROR_SYSTEM;
         }
     }
 
     
     ssize_t nt = readn(fd, tbuf, tlen);
-    if(nt < 0 || (size_t)nt < tlen) {
+    if(nt < 0) {
         free(tbuf);
         free(vbuf);
-        perror("Errore: lettura token sulla pipe reducer -> main non riuscita");
+        return ERROR_SYSTEM;
+    }
+    if((size_t)nt < tlen) {
+        free(tbuf);
+        free(vbuf);
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
 
     if(vlen > 0){
         ssize_t nv = readn(fd, vbuf, vlen);
-        if(nv < 0 || (size_t)nv < vlen) {
+        if(nv < 0) {
             free(tbuf);
             free(vbuf);
-            perror("Errore: lettura value sulla pipe reducer -> main non riuscita");
+            return ERROR_SYSTEM;
+        }
+        if((size_t)nv < vlen) {
+            free(tbuf);
+            free(vbuf);
+            errno = EINVAL;
             return ERROR_SYSTEM;
         }
     }
@@ -430,38 +460,34 @@ int mr_write_result(int fd, char *token, void *value, size_t value_size, size_t 
 
     //validazione header
     if(mr_validate_len(header.token_len, MR_MAX_TOKEN_LEN) != 0 || header.token_len == 0){
-        perror("Errore: validazione token in scrittura sulla pipe reducer->main");
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
 
     if(mr_validate_len(header.value_len, MR_MAX_VALUE_LEN) != 0){
-        perror("Errore: validazione value in scrittura sulla pipe reducer->main");
+        errno = EINVAL;
         return ERROR_SYSTEM;
     }
 
     //scrittura dell'header sulla pipe
     ssize_t nh = writen(fd, &header, sizeof(header));
     if(nh < 0){
-        perror("Errore: scrittura dell'header sulla pipe reducer -> main non riuscita");
         return ERROR_SYSTEM;
     }
 
     if((size_t)nh < sizeof(header)){
-        perror("Errore: scrittura incompleta dell'header sulla pipe reducer -> main");
         return ERROR_SYSTEM;
     }
 
 
     //scrittura del token
     if((writen(fd, token, (size_t)header.token_len)) <= 0){
-        perror("Errore: scrittura del token sulla pipe reducer -> main non riuscita");
         return ERROR_SYSTEM;
     }
 
     //scrittura del value
     if(header.value_len != 0){
         if((writen(fd, value, (size_t)header.value_len)) <= 0){
-            perror("Errore: scrittura del value sulla pipe reducer -> main non riuscita");
             return ERROR_SYSTEM;
         }
     }

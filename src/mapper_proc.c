@@ -5,11 +5,11 @@
 
 
 //CONTROLLO ALFANUMERICO SUL NOME DI UN TOKEN
-static int check_tkn(const char* str){
+static int check_tkn(const char* str, mr_log_t *log){
 
     //stringa nulla
     if(str == NULL || *str == '\0'){
-        fprintf(stderr, "Errore: token in uscita dal mapper vuoto");
+        mr_log_write(log, "mapper", 0, "error", "token in uscita dal mapper vuoto");
         return -1;
     }
 
@@ -18,7 +18,7 @@ static int check_tkn(const char* str){
 
         //controllo tramite valori ASCII
         if(!(str[i] >= 'a' && str[i] <= 'z' || str[i] >= 'A' && str[i] <= 'Z' || str[i] >= '0' && str[i] <= '9')){
-            fprintf(stderr, "Errore: token in uscita dal mapper non valido");
+            mr_log_write(log, "mapper", 0, "error", "token in uscita dal mapper non valido");
             return -1;
         }
     }
@@ -32,14 +32,15 @@ static int mapper_emit_pair(const char* token, const void* value, size_t value_s
     mapper_ctx_t *ctx = (mapper_ctx_t*)emit_arg;
 
     //valido il token
-    if(check_tkn(token) == -1){
+    if(check_tkn(token, ctx->log) == -1){
         ctx->error = 1;
         return -1;
     }
 
     //prendo il mutex
     if(mtx_lock(&ctx->out_mtx) != thrd_success){
-        perror("Errore: mtx_lock in mapper");
+        (mr_log_write(ctx->log, "mapper", 0, "error", "acquisizione mtx del mapper ins crittura su reducer fallita") == -1);
+        ctx->error = 1;
         return -1;
     }
     
@@ -233,7 +234,8 @@ int mapper_process_main(mr_t mr){
     close(STDOUT_FILENO);
 
     if(ctx.error){
-        fprintf(stderr, "Errore nel processo di mapping");
+        mr_log_write(ctx.log, "mapper", 0, "error", "Errore nel processo di mapping");
+        close(STDOUT_FILENO);
         return -1;
     }
 

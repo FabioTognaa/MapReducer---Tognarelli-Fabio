@@ -32,16 +32,18 @@ static int wait_children(mr_t mr, pid_t pid_mapper, pid_t pid_reducer)
     int sts_map, sts_red;
     if (waitpid(pid_mapper, &sts_map, 0) == -1 ||
         waitpid(pid_reducer, &sts_red, 0) == -1) {
+		
         return -1;
     }
     if (!WIFEXITED(sts_map) || !WIFEXITED(sts_red) ||
         WEXITSTATUS(sts_map) != 0 || WEXITSTATUS(sts_red) != 0){
 			errno = EIO;
 			if (WIFSIGNALED(sts_map))
-    		mr_log_write(mr->log, "main", 0, "error", "mapper terminato dal segnale");
+    		mr_log_write(&mr->log, "main", 0, "error", "mapper terminato dal segnale");
+			
 
-			if (WIFSIGNALED(sts_map))
-    			mr_log_write(mr->log, "main", 0, "error", "reducer terminato dal segnale");
+			if (WIFSIGNALED(sts_red))
+    			mr_log_write(&mr->log, "main", 0, "error", "reducer terminato dal segnale");
 			return -1;
 		}
 		
@@ -173,6 +175,7 @@ int mr_create(mr_t *mr, const mr_attr_t *attr, mr_mapper_t mapper, mr_reducer_t 
 	//popolo l'handle con i valori in ingresso
 	handle = malloc(sizeof(*handle));
 	if (handle == NULL) {
+		errno = ENOMEM;
 		return -1;
 	}
 
@@ -371,10 +374,32 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		st.pid_reducer = pid_reducer; 
 		st.children_forked = 1;
 
-		CHECK_SYSCALL(close(mapper_to_reducer[0]), "close main");
-		CHECK_SYSCALL(close(mapper_to_reducer[1]), "close main");
-		CHECK_SYSCALL(close(reducer_to_main[1]), "close main");
-		CHECK_SYSCALL(close(main_to_mapper[0]), "close main");
+		if(close(mapper_to_reducer[0]) == -1){
+			int saved = errno;
+			mr_log_write(&mr->log, "main", 0, "error", "close mapper_to_reducer in input fallita");
+			errno = saved;
+			return mr_start_cleanup(mr, &st, saved);
+		}
+
+		if(close(mapper_to_reducer[1]) == -1){
+			int saved = errno;
+			mr_log_write(&mr->log, "main", 0, "close", "close mapper_to_reducer in output fallita");
+			errno = saved;
+			return mr_start_cleanup(mr, &st, errno);
+		}
+
+		if(close(reducer_to_main[1]) == -1){
+			int saved = errno;
+			mr_log_write(&mr->log, "main", 0, "close", "close reducer_to_main in output fallita");
+			errno = saved;
+			return mr_start_cleanup(mr, &st, errno);
+		}
+		if(close(main_to_mapper[0]) == -1){
+			int saved = errno;
+			mr_log_write(&mr->log, "main", 0, "close", "close main_to_mapper in input fallita");
+			errno = saved;
+			return mr_start_cleanup(mr, &st, errno);
+		}
 
 		//log per apertura file/dir di input
 		mr_log_write(&mr->log, "main", 0, "apertura file di input", NULL);
@@ -387,6 +412,7 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 			mr_log_write(&mr->log, "main", 0, "error", "mr_send_input nel main fallito");
 			return mr_start_cleanup(mr, &st, saved);
 		}
+		st.mapper_write_open = 0;
 
 		//log per chiusura file/dir di input
 		mr_log_write(&mr->log, "main", 0, "chiusura file di input", NULL);
@@ -418,18 +444,12 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 			size_t result_size = 0;
 
 			//uso funzione mr_read_result
-			int rr = mr_read_result(reducer_to_main[0], &token, &result, &result_size);
+			int rr = mr_read_result(st.reducer_read_fd, &token, &result, &result_size);
 
 			if(rr == EOF_REACHED)
 				break;
 
 			if(rr == -1){
-				if(close(reducer_to_main[0]) != 0){
-					//cleanup con funzione e messaggio di log
-					int saved = errno;
-					mr_log_write(&mr->log, "main", 0, "error", "close reducer_to_main fallita");
-					return mr_start_cleanup(mr, &st, saved);
-				}
 				//cleanup con funzione e messaggio di log
 				int saved = errno;
 				mr_log_write(&mr->log, "main", 0, "error", "mr_read_result nel main fallita");
@@ -443,16 +463,9 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 
 				//eventuale cleanup
 				if(!nr){
-					//chiudi fd rimanenti
-					if(close(reducer_to_main[0]) != 0){ 
-						//cleanup con funzione e messaggio di log
-						int saved = errno;
-						mr_log_write(&mr->log, "main", 0, "error", "close di reducer_to_main fallita");
-						return mr_start_cleanup(mr, &st, saved);
-					}
-					free_records(record, dim);
-					(void)wait_children(pid_mapper, pid_reducer);
-					return -1;
+					int saved = ENOMEM;
+					mr_log_write(&mr->log, "main", 0, "error", "realloc di array di record");
+					return mr_start_cleanup(mr, &st, saved);
 				}
 
 				//assegno i nuovi valori
@@ -466,7 +479,12 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 			record[dim].res_len = result_size;  
 			record[dim].token_len = strlen(token);  
 			dim++;
+
+			//aggiorno st
+			st.records = record;
+			st.n_records = dim;
 		}
+		st.reducer_read_open = 0;
 
 		//log per il numero totale di record prodotti
 		char msgg[64];
@@ -475,7 +493,7 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		mr_log_write(&mr->log, "main", 0, "stats", msgg);
 
 		//chiudo comunicazione verso il reducer
-		if(close(reducer_to_main[0]) != 0){ 
+		if(close(st.reducer_read_fd) != 0){ 
 			int saved = errno;
 			mr_log_write(&mr->log, "main", 0, "error", "close di reducer_to_main fallita");
 			return mr_start_cleanup(mr, &st, saved);
@@ -495,6 +513,7 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 			return mr_start_cleanup(mr, &st, saved);
 		}
 
+		st.output_fd = f_out;
 		//scrivo sul file tutti i record in ordine lessicografico
 		for(size_t i = 0; i < dim; i++){
 			int cr;
@@ -520,7 +539,7 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		free_records(record, dim);
 		
 		//waitpid sui figli
-		if(wait_children(pid_mapper, pid_reducer) != 0)
+		if(wait_children(mr, st.pid_mapper, st.pid_reducer) != 0)
 			mr->error = 1;
 	}
 

@@ -24,6 +24,7 @@ int check_path(const char *path){
 
     //controllo se il path esiste ed è accessibile
     if(stat(path, &info_path) != 0){
+        errno = EINVAL;
         return -1;
     }
 
@@ -56,13 +57,13 @@ static int send_one_file(const char *file_path, int mapper_write_fd){
     //apertura del file
     int fd;
     if((fd = open(file_path, O_RDONLY)) == -1){
-        perror("Errore: open() del file in input non riuscita");
+       
         return -1;
     }
 
     FILE *fp;
     if (!(fp = fdopen(fd, "r"))){
-        perror("Errore: fdopen del file in input non riuscita");
+        
         close(fd);
         return -1;
     }
@@ -86,7 +87,6 @@ static int send_one_file(const char *file_path, int mapper_write_fd){
             free(buff);
             fclose(fp);
 
-            perror("Errore: scrittura del file di input su pipe verso il mapper");
             return -1;
         } 
         l_number++;
@@ -107,21 +107,23 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
     //determina il tipo di input_path
     int path_type;
     if((path_type = check_path(input_path)) == -1){
-        perror("Errore: path in ingresso non valido");
         return -1;
     }
 
     //caso file
     if(path_type == IS_FILE){
         int ris;
-        if((ris = send_one_file(input_path, mapper_write_fd)) == -1)
-            return -1;
-        if (close(mapper_write_fd) == -1){
-            perror("Errore: chiusura del mapper non riuscita");
+        if((ris = send_one_file(input_path, mapper_write_fd)) == -1){
+            // Su errore non chiudere mapper_write_fd: lo gestisce mr_start_cleanup
             return -1;
         }
+        
         if(out_lines != NULL)
             *out_lines = (size_t)ris;
+        
+        if(close(mapper_write_fd) == -1)
+            return -1;
+        
         return 0;
     }
     
@@ -132,7 +134,7 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
         DIR *dir;
         struct dirent *file;
         if(!(dir = opendir(input_path))){
-            perror("Errore: impossibile aprire la dir in input");
+            
             return -1;
         }
 
@@ -158,13 +160,23 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
                         free(names[k]);
                     free(names);
                     closedir(dir);
+                    errno = ENOMEM;
                     return -1;
                 }
                 names = tmp;
             }
     
             //aggiungo al buffer
-            names[count++] = strdup(file->d_name); 
+            char *dup = strdup(file->d_name);
+            if (dup == NULL) {
+                for (size_t k = 0; k < count; k++)
+                    free(names[k]);
+                free(names);
+                closedir(dir);
+                errno = ENOMEM;
+                return -1;
+            }
+            names[count++] = dup;
         }
         //chiusura della dir
         closedir(dir);
@@ -182,7 +194,6 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
                     free(names[j]);
                 }
                 free(names);
-                perror("Errore: uno dei file della dir non e' stato processato correttamente");
                 return -1;
             }
             total_lines += (size_t)tmp;
@@ -191,7 +202,6 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
         }
         free(names);
         if (close(mapper_write_fd) == -1){ 
-            perror("Errore: chiusura della pipe in scrittura verso il mapper non riuscita");
             return -1; 
         }
 
@@ -200,8 +210,9 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
         return 0;
     }
 
+    //casi rimanenti
     if(path_type == SOM_ELSE){
-        perror("Errore: file di dati in input non valido");
+        errno = EINVAL;
         return -1;
     }
 

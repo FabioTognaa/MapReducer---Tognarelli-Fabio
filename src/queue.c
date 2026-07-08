@@ -3,20 +3,23 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <threads.h>
+#include <errno.h>
 
 
 //inizializza una coda
 int mr_queue_init(mr_queue_t *q, ssize_t cap){
-
+    if(q == NULL){
+        errno = EINVAL;
+        return -1;
+    }
     //se la coda non fosse vuota
     if(q->items != NULL){
-        fprintf(stderr, "Errore: coda passata in input non vuota");
         return -1;
     }
 
     //setto cap max
     if(cap == 0){
-        printf("Errore: capacita' max della coda selezionata non valida");
+        errno = EINVAL;
         return -1;
     }
     //alloco memoria ed inizializzo campi di q
@@ -24,7 +27,7 @@ int mr_queue_init(mr_queue_t *q, ssize_t cap){
     q->cap = (size_t)DEFAULT_QUEUE_SIZE;
     else q->cap = (size_t)cap;
     if((q->items = calloc(q->cap, sizeof(void*))) == NULL){
-        perror("Errore: allocazione di memoria per una coda fallita");
+        errno = ENOMEM;
         return -1;
     };
 
@@ -33,10 +36,18 @@ int mr_queue_init(mr_queue_t *q, ssize_t cap){
     q->tail = 0;
     q->count = 0;
     
-    if(mtx_init(&q->mtx, mtx_plain) != thrd_success){ perror("Errore: mutex");return -1;}
-    if(cnd_init(&q->not_full) != thrd_success){ perror("Errore: mutex");return -1;}
-    if(cnd_init(&q->not_empty) != thrd_success){ perror("Errore: mutex");return -1;}
-    
+    if(mtx_init(&q->mtx, mtx_plain) != thrd_success){ 
+        errno = EINVAL;
+        return -1;
+    }
+    if(cnd_init(&q->not_full) != thrd_success){ 
+        errno = EINVAL;
+        return -1;
+    }
+    if(cnd_init(&q->not_empty) != thrd_success){ 
+        errno = EINVAL;
+        return -1;
+    }
     q->closed = 0;
 
     return 0;
@@ -46,7 +57,10 @@ int mr_queue_init(mr_queue_t *q, ssize_t cap){
 int mr_queue_destroy(mr_queue_t *q){
 
     //coda vuota
-    if(q == NULL) return 0;
+    if(q == NULL){
+        errno = EINVAL;
+        return -1;
+    }
 
     mtx_destroy(&q->mtx);
     cnd_destroy(&q->not_full);
@@ -60,6 +74,10 @@ int mr_queue_destroy(mr_queue_t *q){
 //aggiunge un elemento in coda
 int mr_queue_push(mr_queue_t *q, void* item){
 
+     if(q == NULL){
+        errno = EINVAL;
+        return -1;
+    }
     //se coda piena attende su empty
     mtx_lock(&q->mtx);
 
@@ -85,6 +103,11 @@ int mr_queue_push(mr_queue_t *q, void* item){
 //elimina un elemento in coda
 int mr_queue_pop(mr_queue_t *q, void **item){
 
+     if(q == NULL){
+        errno = EINVAL;
+        return -1;
+    }
+
     //se coda piena attende su empty
     mtx_lock(&q->mtx);
 
@@ -94,7 +117,6 @@ int mr_queue_pop(mr_queue_t *q, void **item){
 
     if (q->count == 0) {
         mtx_unlock(&q->mtx);
-        fprintf(stderr, "coda chiusa");
         return -1;  
     }
 
@@ -112,8 +134,10 @@ int mr_queue_pop(mr_queue_t *q, void **item){
 //chiude la coda
 int mr_queue_close(mr_queue_t *q){
     
-    if(q == NULL){ perror("Errore: si vuole chiudere una coda vuota"); return -1;}
-
+    if(q == NULL){
+        errno = EINVAL;
+        return -1;
+    }
     mtx_lock(&q->mtx);
     
     //setta il flag e risveglia gli worker che devono finire di rimuovere le cose in coda

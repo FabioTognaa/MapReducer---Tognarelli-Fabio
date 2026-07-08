@@ -25,28 +25,28 @@ Stato aggiornato rispetto al codice attuale. Manuale di riferimento: due regole 
 ## Fase 1 — `src/mr.c` (finire + correggere bug)
 
 ### Bloccanti compilazione
-- [ ] Rimuovere `CHECK_SYSCALL` alle linee ~374–377 — la macro non esiste più
-- [ ] Sostituire con check manuale; su errore: `saved = errno`, log `"error"`, `return mr_start_cleanup(mr, &st, saved)`
+- [x] Rimuovere `CHECK_SYSCALL` alle linee ~374–377 — la macro non esiste più
+- [x] Sostituire con check manuale; su errore: `saved = errno`, log `"error"`, `return mr_start_cleanup(mr, &st, saved)`
 
 ### `wait_children` (~linee 30–48)
-- [ ] Correggere `mr_log_write(mr->log, ...)` → `mr_log_write(&mr->log, ...)`
-- [ ] `WEXITSTATUS != 0` → `errno = EIO`, return `-1`, **nessun log**
-- [ ] `WIFSIGNALED(sts_map)` → log `"mapper terminated by signal"`, `errno = EIO`
-- [ ] `WIFSIGNALED(sts_red)` → log `"reducer terminated by signal"` (oggi si controlla `sts_map` due volte)
-- [ ] `waitpid` fallita → propaga `errno` kernel, return `-1`
-- [ ] Path successo ~523: `wait_children(mr, pid_mapper, pid_reducer)` — firma attuale errata
+- [x] Correggere `mr_log_write(mr->log, ...)` → `mr_log_write(&mr->log, ...)`
+- [x] `WEXITSTATUS != 0` → `errno = EIO`, return `-1`, **nessun log**
+- [x] `WIFSIGNALED(sts_map)` → log `"mapper terminated by signal"`, `errno = EIO`
+- [x] `WIFSIGNALED(sts_red)` → log `"reducer terminated by signal"` (oggi si controlla `sts_map` due volte)
+- [x] `waitpid` fallita → propaga `errno` kernel, return `-1`
+- [x] Path successo ~523: `wait_children(mr, pid_mapper, pid_reducer)` — firma attuale errata
 
 ### Allineare `st` con variabili locali
-- [ ] Dopo `mr_send_input` OK → `st.mapper_write_open = 0`
-- [ ] Usare `st.reducer_read_fd` nel loop `mr_read_result` (non `reducer_to_main[0]` diretto)
-- [ ] Dopo `open` output OK → `st.output_fd = f_out`
-- [ ] Aggiornare `st.records` e `st.n_records` (`record`, `dim`) prima di ogni cleanup — oggi `st.records` resta `NULL`
+- [x] Dopo `mr_send_input` OK → `st.mapper_write_open = 0`
+- [x] Usare `st.reducer_read_fd` nel loop `mr_read_result` (non `reducer_to_main[0]` diretto)
+- [x] Dopo `open` output OK → `st.output_fd = f_out`
+- [x] Aggiornare `st.records` e `st.n_records` (`record`, `dim`) prima di ogni cleanup — oggi `st.records` resta `NULL`
 
 ### Path errore ancora sporchi
-- [ ] **`realloc` fallito** (~445–455): sostituire cleanup manuale con `saved = ENOMEM`, log, `mr_start_cleanup`
-- [ ] **`mr_read_result == -1`** (~426–436): evitare `close` manuale prima del cleanup; usare flag `st.reducer_read_open`
-- [ ] **`mr_write_result` fallita**: `st.output_fd` deve essere già impostato
-- [ ] Path successo: coordinare `free_records` locale con `st.records` (evitare double-free)
+- [x] **`realloc` fallito** (~445–455): sostituire cleanup manuale con `saved = ENOMEM`, log, `mr_start_cleanup`
+- [x] **`mr_read_result == -1`** (~426–436): evitare `close` manuale prima del cleanup; usare flag `st.reducer_read_open`
+- [x] **`mr_write_result` fallita**: `st.output_fd` deve essere già impostato
+- [x] Path successo: coordinare `free_records` locale con `st.records` (evitare double-free)
 
 ### Return finale
 - [ ] Sostituire `mr->error` con return esplicito `0` / `-1` + `errno`
@@ -58,59 +58,59 @@ Stato aggiornato rispetto al codice attuale. Manuale di riferimento: due regole 
 
 ## Fase 2 — `src/io.c` (~40 `perror`) — non iniziata
 
-- [ ] Rimuovere ogni `perror`
-- [ ] Header/len invalidi → `errno = EINVAL; return ERROR_SYSTEM`
-- [ ] `malloc` fallito → `errno = ENOMEM`
-- [ ] Syscall → lasciare `errno` del kernel
-- [ ] `EOF_REACHED` → invariato, non toccare `errno`
-- [ ] Zero log, zero `fprintf`
+- [x] Rimuovere ogni `perror`
+- [x] Header/len invalidi → `errno = EINVAL; return ERROR_SYSTEM`
+- [x] `malloc` fallito → `errno = ENOMEM`
+- [x] Syscall → lasciare `errno` del kernel
+- [x] `EOF_REACHED` → invariato, non toccare `errno`
+- [x] Zero log, zero `fprintf`
 
 ---
 
-## Fase 3 — `src/input.c` (~9 `perror`) — non iniziata
+## Fase 3 — `src/input.c` (~9 `perror`) — completata
 
-- [ ] Rimuovere tutti i `perror`
-- [ ] Su **errore**: `return -1`, **non** chiudere `mapper_write_fd`
-- [ ] Su **successo**: chiudi pipe; parent fa `st.mapper_write_open = 0`
-- [ ] Path invalido → `errno = EINVAL`
-- [ ] `realloc`/`strdup` falliti → `errno = ENOMEM`
+- [x] Rimuovere tutti i `perror`
+- [x] Su **errore**: `return -1`, **non** chiudere `mapper_write_fd`
+- [x] Su **successo**: chiudi pipe; parent fa `st.mapper_write_open = 0`
+- [x] Path invalido → `errno = EINVAL`
+- [x] `realloc`/`strdup` falliti → `errno = ENOMEM`
 
 ---
 
 ## Fase 4 — `src/queue.c` — non iniziata
 
-- [ ] Rimuovere `fprintf(stderr, "coda chiusa")` — non è errore
-- [ ] `q == NULL` → `errno = EINVAL; return -1` (silenzioso)
-- [ ] `malloc` → `ENOMEM`; `mtx_init`/`cnd_init` falliti → `errno` + `-1`, niente `perror`
+- [x] Rimuovere `fprintf(stderr, "coda chiusa")` — non è errore
+- [x] `q == NULL` → `errno = EINVAL; return -1` (silenzioso)
+- [x] `malloc` → `ENOMEM`; `mtx_init`/`cnd_init` falliti → `errno` + `-1`, niente `perror`
 
 ---
 
 ## Fase 5 — `src/mapper_proc.c` — non iniziata
 
-- [ ] `fprintf(stderr, …)` → `mr_log_write(ctx->log, "mapper", 0, "error", …)`
-- [ ] `perror` su `mtx_lock` → log + `return -1`
-- [ ] Token invalido / callback `-1` → `ctx->error = 1`
-- [ ] A fine `mapper_process_main`: se errore, chiudi stdout prima di `return -1`
+- [x] `fprintf(stderr, …)` → `mr_log_write(ctx->log, "mapper", 0, "error", …)`
+- [x] `perror` su `mtx_lock` → log + `return -1`
+- [x] Token invalido / callback `-1` → `ctx->error = 1`
+- [x] A fine `mapper_process_main`: se errore, chiudi stdout prima di `return -1`
 
 ---
 
 ## Fase 6 — `src/reducer_proc.c` — non iniziata
 
-- [ ] Stesso schema del mapper (`fprintf` → `mr_log_write`, flag errore, chiusura stdout)
+- [x] Stesso schema del mapper (`fprintf` → `mr_log_write`, flag errore, chiusura stdout)
 
 ---
 
 ## Fase 7 — `src/log.c` — opzionale
 
-- [ ] `perror` su argomenti `NULL` → `errno = EINVAL; return -1` (senza stampa)
-- [ ] `perror` su syscall log → lasciare o togliere (fuori dal percorso utente)
+- [x] `perror` su argomenti `NULL` → `errno = EINVAL; return -1` (senza stampa)
+- [x] `perror` su syscall log → lasciare o togliere (fuori dal percorso utente)
 
 ---
 
 ## Fase 8 — API pubblica
 
-- [ ] `mr_create`: su `malloc` fallito → `errno = ENOMEM` (oggi `return -1` nudo)
-- [ ] Verificare che `record_from_reducer_t` in `mr.h` pubblico sia voluto
+- [x] `mr_create`: su `malloc` fallito → `errno = ENOMEM` (oggi `return -1` nudo)
+- [x] Verificare che `record_from_reducer_t` in `mr.h` pubblico sia voluto
 
 ---
 
