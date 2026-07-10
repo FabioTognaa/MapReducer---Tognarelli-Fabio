@@ -10,12 +10,14 @@ LIBMR_OBJS = src/mr.o src/io.o src/log.o src/input.o src/queue.o src/mapper_proc
 EXAMPLE     = examples/minimal
 EXAMPLE_SRC = examples/minimal.c
 
-TEST_LOG      = tests/log
-TEST_LOG_SRC  = tests/log.c
-TEST_INPUT    = tests/input
-TEST_INPUT_SRC = tests/input.c
-TEST_MAPPER   = tests/mapper
+TEST_LOG      	= tests/log
+TEST_LOG_SRC  	= tests/log.c
+TEST_INPUT    	= tests/input
+TEST_INPUT_SRC 	= tests/input.c
+TEST_MAPPER   	= tests/mapper
 TEST_MAPPER_SRC = tests/mapper.c
+TEST_IO         = tests/io
+TEST_IO_SRC     = tests/io.c
 
 .PHONY: all test clean
 
@@ -30,10 +32,11 @@ $(EXAMPLE): $(EXAMPLE_SRC) $(LIBMR)
 src/%.o: src/%.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
-test: $(LIBMR) $(TEST_LOG) $(TEST_INPUT) $(TEST_MAPPER)
+test: $(LIBMR) $(TEST_LOG) $(TEST_INPUT) $(TEST_MAPPER) $(TEST_IO)
 	./$(TEST_LOG)
 	./$(TEST_INPUT)
 	./$(TEST_MAPPER)
+	./$(TEST_IO)
 
 $(TEST_LOG): $(TEST_LOG_SRC) $(LIBMR)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_LOG_SRC) $(LIBMR) -pthread
@@ -44,6 +47,8 @@ $(TEST_INPUT): $(TEST_INPUT_SRC) $(LIBMR)
 $(TEST_MAPPER): $(TEST_MAPPER_SRC) $(LIBMR)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_MAPPER_SRC) $(LIBMR) -pthread
 
-	
+$(TEST_IO): $(TEST_IO_SRC) $(LIBMR)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_IO_SRC) $(LIBMR) -pthread
+
 clean:
-	rm -f $(LIBMR) $(LIBMR_OBJS) $(EXAMPLE) $(TEST_LOG) $(TEST_INPUT) $(TEST_MAPPER)
+	rm -f $(LIBMR) $(LIBMR_OBJS) $(EXAMPLE) $(TEST_LOG) $(TEST_INPUT) $(TEST_MAPPER) $(TEST_IO)

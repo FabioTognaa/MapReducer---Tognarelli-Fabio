@@ -8,45 +8,57 @@
 
 #define WRITES_PER_PROC 50
 
+
 static int check_line_format(const char *line)
 {
 	char ts[32], proc[16], evt[64], msg[128];
 	size_t tid;
 
+	//lettura in input di  scringhe e id
 	if (sscanf(line, "[%[^]]] [%[^]]] [%zu] [%[^]]] %[^\n]",
 		   ts, proc, &tid, evt, msg) != 5)
 		return -1;
+	
+	
 	if (strlen(ts) != 19)
 		return -1;
+
+	//proc deve contenere 'main'
 	if (strcmp(proc, "main") != 0 || tid != 0)
 		return -1;
 	return 0;
 }
 
+//conta le linee formattate
 static int count_formatted_lines(const char *path, int expected)
 {
+	//valori di default
 	FILE *f;
 	char line[1024];
 	int n = 0;
 
+	//apro file 
 	f = fopen(path, "r");
 	if (f == NULL)
 		return -1;
 
+	//controllo che ogni riga abbia il giusto formato
 	while (fgets(line, sizeof(line), f) != NULL) {
 		if (check_line_format(line) != 0) {
 			fclose(f);
 			return -1;
 		}
+		//conto la linea
 		n++;
 	}
+	//chiudo il file
 	fclose(f);
 
 	return n == expected ? 0 : -1;
 }
 
-static int count_log_lines(const char *path, int expected,
-			   int *parent_lines, int *child_lines)
+//funzione per controllare la validita' di ogni riga, classificarla come scritta da padre o da figlio e controllare che il totale sia quello atteso
+static int count_log_lines(const char *path, int expected, int *parent_lines, int *child_lines)
 {
 	FILE *f;
 	char line[1024];
@@ -73,11 +85,13 @@ static int count_log_lines(const char *path, int expected,
 	}
 	fclose(f);
 
+	//se numero diverso da quello che ci si aspetta
 	if (n != expected)
 		return -1;
 	return 0;
 }
 
+//verifica che una singola scrittura produca una riga valida su un file temporaneo
 static int test_single_write(void)
 {
 	char path[] = "/tmp/mr_log_test_XXXXXX";
@@ -89,20 +103,28 @@ static int test_single_write(void)
 		return -1;
 	close(fd);
 
+	//crea il file di log
 	if (mr_create_log(&log, path) < 0)
 		return -1;
+
+	//scrive un messaggio che simula la creazione di una pipe
 	if (mr_log_write(&log, "main", 0, "pipe", "created") != 0)
 		return -1;
+
+	//chiude il log
 	mr_log_close(&log);
 
+	//conta il n di linee formattate fuznioni a dovere
 	if (count_formatted_lines(path, 1) != 0) {
 		unlink(path);
 		return -1;
 	}
+	//unlink e ritorna positivamente
 	unlink(path);
 	return 0;
 }
 
+//testa il log di default mr.log
 static int test_default_log(void)
 {
 	char cwd[256];
@@ -110,6 +132,8 @@ static int test_default_log(void)
 	mr_log_t log;
 	FILE *f;
 
+	//crea la dir temporanea e la cambia come dir di lavoro corrente
+	//mi salvo la dir di lavoro corrente per ripristinarla in seguito
 	if (getcwd(cwd, sizeof(cwd)) == NULL)
 		return -1;
 	if (mkdtemp(dir) == NULL)
@@ -117,19 +141,28 @@ static int test_default_log(void)
 	if (chdir(dir) != 0)
 		return -1;
 
+	//elimina per sicurezza un file con lo stesso nome
 	unlink("mr.log");
+
+	//crea il file di log di default
 	if (mr_create_log(&log, NULL) < 0)
 		return -1;
+
+	//scrittura di esempio sul file di default
 	if (mr_log_write(&log, "main", 0, "test", "ok") != 0)
 		return -1;
 	mr_log_close(&log);
 
+
+	//apro un file e lo chiamo come quello di default
 	f = fopen("mr.log", "r");
 	if (f == NULL) {
 		chdir(cwd);
 		rmdir(dir);
 		return -1;
 	}
+
+	//chiudo tutto e ripistino lo stato di lavoro corrente
 	fclose(f);
 	unlink("mr.log");
 	chdir(cwd);
@@ -137,6 +170,7 @@ static int test_default_log(void)
 	return 0;
 }
 
+//testa la sincronizzazione del lavoro sul log dopo la fork() 
 static int test_fork_sync(void)
 {
 	char path[] = "/tmp/mr_log_fork_XXXXXX";
@@ -146,19 +180,24 @@ static int test_fork_sync(void)
 	int status;
 	int parent = 0, child = 0;
 
+	//creo la dir
 	fd = mkstemp(path);
 	if (fd < 0)
 		return -1;
 	close(fd);
 
+	//creo file di log
 	if (mr_create_log(&log, path) < 0)
 		return -1;
 
+	//faccio un fork()
 	pid = fork();
 	if (pid < 0)
 		return -1;
 
+	//nel figlio
 	if (pid == 0) {
+		//scrivo 50 volte un log di test 
 		for (int i = 0; i < WRITES_PER_PROC; i++) {
 			if (mr_log_write(&log, "main", 0, "test", "child") != 0)
 				_exit(1);
@@ -166,31 +205,39 @@ static int test_fork_sync(void)
 		_exit(0);
 	}
 
+	//nel padre faccio lo stesso
 	for (int i = 0; i < WRITES_PER_PROC; i++) {
 		if (mr_log_write(&log, "main", 0, "test", "parent") != 0)
 			return -1;
 	}
 
+	//wait standard
 	if (waitpid(pid, &status, 0) < 0)
 		return -1;
 	if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
 		return -1;
 
+	//chiudo il file di log
 	mr_log_close(&log);
 
+	//se sia il parent che il figlio hanno scritto tutte le linee e quindi non ci sono state collisioni di race condition siamo apposto 
 	if (count_log_lines(path, WRITES_PER_PROC * 2, &parent, &child) != 0) {
 		unlink(path);
 		return -1;
 	}
+	//cancello il file di log temporaneo
 	unlink(path);
 
+	//controllo anche che parent e child abbiano spartito correttamente il numero di righe scritte
 	if (parent != WRITES_PER_PROC || child != WRITES_PER_PROC)
 		return -1;
 	return 0;
 }
 
+//MAIN
 int main(void)
 {
+	//testo tutte le funzioni
 	if (test_single_write() != 0) {
 		fprintf(stderr, "test_single_write failed\n");
 		return 1;

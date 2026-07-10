@@ -542,6 +542,10 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		if(wait_children(mr, st.pid_mapper, st.pid_reducer) != 0)
 			mr->error = 1;
 	}
+	if(mr->error == 1){
 
+		
+		return -1;
+	}
 	return mr->error ? -1 : 0;
 }
