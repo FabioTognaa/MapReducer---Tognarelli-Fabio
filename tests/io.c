@@ -82,7 +82,7 @@ static int test_readn_writen(void){
 }
 
 // TODO: test_readn_partial / test_writen_partial (vedi blocco TODO in cima al file)
-
+static int test_readn_writen_partial(){}
 //testa il funzionamento di mr_read_line e mr_write_line
 static int test_line(void){
 

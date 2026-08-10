@@ -8,126 +8,193 @@
 #include "io.h"
 #include "reducer_proc.h"
 
-/*
- * TODO: test mancanti in tests/reducer.c
- * (processo reducer isolato via fork + dup2, analogo a tests/mapper.c)
- *
- * setup comune (da riusare in ogni test)
- * - run_reducer_child(in_pipe, out_pipe, mr): dup2 stdin/stdout, chiude fd extra,
- *   _exit(reducer_process_main(mr) != 0)
- * - helper per inviare coppie con mr_write_pair e chiudere stdin (EOF verso reducer)
- * - helper per leggere tutti i risultati con mr_read_result fino a EOF_REACHED
- * - dummy_mapper statico (come in mapper.c) per mr_create quando non serve il mapper
- *
- * --- requisiti PDF sez. 6.2, 10: raggruppamento e invocazione reducer ---
- *
- * test_reducer_process_single_pair (happy path, analogo a test_mapper_process)
- * - una coppia <"hello", int 42> in stdin
- * - reducer di test emette un risultato opaco
- * - verifica: exit 0 del figlio, un record in stdout, token e valore corretti
- *
- * test_reducer_groups_values_by_token  [CRITICO per il PDF]
- * - inviare più coppie con lo stesso token (es. "foo" con valori 1, 2, 3)
- * - reducer di test registra values_count e i byte di ogni mr_value_t
- * - verifica: reducer invocato UNA sola volta per "foo" con values_count == 3
- * - verifica: i valori ricevuti sono tutti e nell'ordine di arrivo nel gruppo
- *   (il PDF vieta di invocare il reducer per ogni singola coppia)
- *
- * test_reducer_multiple_tokens
- * - coppie per token distinti ("b", "a", "c") in ordine arbitrario in input
- * - reducer conta le invocazioni e i token ricevuti
- * - verifica: una invocazione per token distinto, values_count corretto per ciascuno
- * - verifica: gruppi interni ordinati lessicograficamente prima del reduce
- *   (qsort in reader_mapper; i risultati su stdout possono uscire in ordine diverso)
- *
- * test_reducer_empty_input
- * - stdin chiuso senza coppie (EOF immediato)
- * - verifica: exit 0, nessun risultato su stdout, nessuna invocazione del reducer
- *
- * test_reducer_no_results_emitted
- * - coppie in input ma reducer di test non chiama emit
- * - verifica: exit 0, stdout vuoto (solo EOF)
- *
- * --- valori opachi (PDF sez. 3, 10) ---
- *
- * test_reducer_zero_size_value
- * - coppia con value_size == 0 e value == NULL
- * - verifica: reducer riceve mr_value_t con size 0 e data NULL
- *
- * test_reducer_binary_value
- * - value con byte nulli interni (es. {1, 0, 2})
- * - verifica: reducer riceve i byte corretti via memcmp, non strcmp/strlen
- *
- * test_reducer_multiple_values_mixed_sizes
- * - stesso token con mix di value vuoti e binari
- *
- * --- emit dal reducer (PDF sez. 8, A.1) ---
- *
- * test_reducer_emit_multiple_results
- * - reducer emette 2+ risultati per lo stesso token
- * - verifica: tutti i record leggibili da stdout con mr_read_result
- * - documentare/verificare l'ordine relativo dei risultati per token
- *   (il main in mr_start riordina per token, non necessariamente i duplicati)
- *
- * test_reducer_emit_zero_size_result
- * - emit con result_size == 0
- *
- * --- thread C11 e parallelismo (PDF sez. 6, 6.2) ---
- *
- * test_reducer_threads_one
- * - mr_attr_set_reducer_threads(&attr, 1), più token distinti
- *
- * test_reducer_threads_many
- * - reducer_threads > 1 e più token (> n_workers) per esercitare i batch
- *   (loop start += n_workers in reducer_process_main)
- * - verifica: exit 0 e risultati corretti per tutti i token
- *
- * test_reducer_threads_more_than_tokens
- * - reducer_threads > numero di gruppi (batch < n_workers)
- *
- * test_reducer_concurrent_emit
- * - molti token, reducer_threads > 1, ogni worker emette un risultato
- * - verifica: nessun messaggio troncato su stdout (mutex out_mtx + mr_write_result)
- *   controllando che ogni record sia parsabile con mr_read_result
- *
- * --- errori e terminazione (PDF sez. 5.1, 12) ---
- *
- * test_reducer_reducer_returns_error
- * - reducer utente ritorna -1
- * - verifica: reducer_process_main fallisce, figlio exit != 0
- *
- * test_reducer_invalid_pair_on_stdin
- * - header troncato o lunghezze invalide su stdin
- * - verifica: exit != 0, ctx.error propagato
- *
- * test_reducer_stdout_closed_on_success
- * - dopo elaborazione ok, ulteriore read su stdout -> EOF
- *   (chiusura unica di STDOUT_FILENO solo a fine reducer_process_main)
- *
- * test_reducer_stdin_closed_after_eof
- * - verifica indiretta: reader_mapper chiude STDIN_FILENO dopo EOF_REACHED
- *
- * --- log (PDF sez. 11) ---
- *
- * test_reducer_log_distinct_tokens
- * - con N token distinti, log contiene "numero di token distinti: N"
- *
- * test_reducer_log_on_error
- * - su input malformato, riga di log con evento "error"
- *
- * --- infrastruttura Makefile ---
- *
- * - aggiungere TEST_REDUCER a Makefile (build + dipendenza di `make test` + clean)
- * - registrare in main() tutti i test sopra quando implementati
- *
- * NOTA: il partizionamento per hash dei token sui thread reducer è requisito
- * solo dell'addendum (PDF sez. 14); non serve per il progetto base.
- */
 
-// TODO: implementare i test elencati sopra
+// mapper fittizio per mr_create (il mapper non viene eseguito in questi test)
+static int dummy_mapper(const mr_file_line_t *line, mr_emit_pair_t emit, void *emit_arg, void *user_arg){	
+	(void)line;
+	(void)emit;
+	(void)emit_arg;
+	(void)user_arg;
+	return 0;
+}
 
-int main(void)
-{
-	fprintf(stderr, "reducer: nessun test implementato\n");
-	return 1;
+//nel figlio dopo la fork(), reindirizza in e out e chiama reducer_process_main() per avviarlo
+static void run_reducer_child(int pipe_in[2], int pipe_out[2], mr_t mr){
+	//reindirizzamento tramite pipe
+	dup2(pipe_in[0], STDIN_FILENO);
+	dup2(pipe_out[1], STDOUT_FILENO);
+	close(pipe_in[0]);
+	close(pipe_in[1]);
+	close(pipe_out[0]);
+	close(pipe_out[1]);
+	_exit(reducer_process_main(mr) != 0);
+}
+
+//reducer di test: accetta una sola coppia <"hello", 42> ed emette un risultato opaco
+static int test_reducer(const char *token, const mr_value_t *values, size_t values_count, mr_emit_result_t emit, void *emit_arg, void *user_arg){
+	
+	int v = 42;
+	(void)user_arg;
+
+	//controllo che la coppia sia ok
+	if( (strcmp(token, "hello") != 0) || values_count != 1 || values[0].size != sizeof(int) || *(const int *)values[0].data != 42)
+		return -1;
+
+	return emit("hello", &v, sizeof(v), emit_arg);
+}
+
+//testa il reducer che processa un token con più valori assegnati (ESEMPIO: <"hello", [1; 2; 3]>)
+static int test_reducer_groups_values_by_token(const char* token, const mr_value_t *values, size_t values_count, mr_emit_result_t emit, void *emit_arg, void *user_arg){
+
+	//controllo token e lunghezza dei valori
+	if(values_count != 3 || strcmp(token, "hello"))
+		return -1;
+
+	//lista di valori associati al token
+	int buf[3];
+	for(size_t i = 0; i < values_count; i++){
+		if(*(const int*)values[i].data != i+1 || values[i].size != sizeof(int))
+			return -1;
+		buf[i] = *(const int *)values[i].data;
+	}
+
+	return emit("hello", buf, sizeof(buf), emit_arg);
+}
+
+//test del processo reducer
+static int test_reducer_process(void){
+
+	//inizializza i dati utili
+	char log_path[] = "/tmp/mr_reducer_log_XXXXXX";	//path del file di log di test 
+	mr_attr_t attr;
+	mr_t mr;
+	int in_pipe[2];
+	int out_pipe[2];
+	pid_t pid;
+	int status;
+	char *token = NULL;
+	void *value = NULL;
+	size_t result_size = 0;
+
+	//crea una dir 
+	if (mkstemp(log_path) < 0)
+		return -1;
+	unlink(log_path);
+
+	//setto attributi mr
+	if(mr_attr_init(&attr) != 0)
+		return -1;
+
+	//setta il file di log
+	if (mr_attr_set_log_file(&attr, log_path) != 0){
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+
+	//creazione mapreducer
+	if(mr_create(&mr, &attr, dummy_mapper, test_reducer_groups_values_by_token, NULL) != 0){
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+	//creo pipe
+	if(pipe(in_pipe) != 0 || pipe(out_pipe) != 0){
+		mr_attr_destroy(&attr);
+		mr_destroy(mr);
+		return -1;
+	}
+
+	//fork
+	pid = fork();
+	if(pid < 0){
+		close(in_pipe[0]);
+		close(in_pipe[1]);
+		close(out_pipe[0]);
+		close(out_pipe[1]);
+		mr_attr_destroy(&attr);
+		mr_destroy(mr);
+		return -1;
+	}
+
+	//figlio
+	if(pid == 0)
+		run_reducer_child(in_pipe, out_pipe, mr);
+
+	//padre
+	close(in_pipe[0]);
+	close(out_pipe[1]);
+
+	//inizializza array di valori inventato da scrivere 
+	int numeri[] = {1, 2, 3};
+	//scrive un gruppo di un token in output
+	for(int i = 0; i < 3; i++){
+		int v = numeri[i];
+		if(mr_write_pair(in_pipe[1], "hello", &v, sizeof(v), 5) != 0){
+			close(in_pipe[1]);	
+			close(out_pipe[0]);
+			waitpid(pid, &status, 0);	
+			mr_attr_destroy(&attr);
+			mr_destroy(mr);
+			unlink(log_path);
+			return -1;
+		}
+	}
+	close(in_pipe[1]);
+
+	//legge il risultato dell'output
+	if(mr_read_result(out_pipe[0], &token, &value, &result_size ) != 0){
+		close(out_pipe[0]);
+		waitpid(pid, &status, 0);	
+		mr_attr_destroy(&attr);
+		mr_destroy(mr);
+		unlink(log_path);
+		free(token);
+		free(value);
+		return -1;
+	}
+	close(out_pipe[0]);
+
+	//controllo dei risultati appena letti
+	if(strcmp(token, "hello") != 0 || result_size != 3 * sizeof(int)){
+		waitpid(pid, &status, 0);	
+		mr_attr_destroy(&attr);
+		mr_destroy(mr);
+		unlink(log_path);
+		free(token);
+		free(value);
+		return -1;
+	}
+
+	for(size_t i = 0; i < 3; i++){
+		if(((const int *)value)[i] != (int)(i + 1)){
+			waitpid(pid, &status, 0);	
+			mr_attr_destroy(&attr);
+			mr_destroy(mr);	
+			unlink(log_path);	
+			free(token);
+			free(value);
+			return -1;
+		}
+	}
+	waitpid(pid, &status, 0);	
+	mr_attr_destroy(&attr);
+	mr_destroy(mr);
+	unlink(log_path);
+
+	//controlla lo stato di uscita
+	if(!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+		return -1;
+
+	free(token);
+	free(value);
+	return 0;
+}
+
+//main
+int main(void){
+	if(test_reducer_process() != 0){
+		fprintf(stderr, "reducer: test non andati a buon fine\n");
+		return 1;
+	}
+	printf("reducer: tutti i test superati\n");
+	return 0;
 }

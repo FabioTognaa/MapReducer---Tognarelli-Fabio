@@ -11,8 +11,7 @@
 //funzione reducer fittizia utile da passare come parametro a mr_create
 static int dummy_reducer(const char *token, const mr_value_t *values,
 			 size_t values_count, mr_emit_result_t emit,
-			 void *emit_arg, void *user_arg)
-{
+			 void *emit_arg, void *user_arg){
 	(void)token;
 	(void)values;
 	(void)values_count;
@@ -33,8 +32,7 @@ static int test_mapper(const mr_file_line_t *line, mr_emit_pair_t emit, void *em
 }
 
 //nel figlio dopo la fork() reindirizza la comunicazione su stdin e stdout, chiude le altre e chiama mapper_process_main() su mr
-static void run_mapper_child(int in_pipe[2], int out_pipe[2], mr_t mr)
-{
+static void run_mapper_child(int in_pipe[2], int out_pipe[2], mr_t mr){
 	dup2(in_pipe[0], STDIN_FILENO);
 	dup2(out_pipe[1], STDOUT_FILENO);
 	close(in_pipe[0]);
@@ -60,7 +58,7 @@ static int test_mapper_process(void)
 	size_t value_size = 0;
 	int rc;
 
-	//crea una dir 
+	//crea una dir
 	if (mkstemp(log_path) < 0)
 		return -1;
 
@@ -69,6 +67,7 @@ static int test_mapper_process(void)
 	//inizializza gli attributi del mapreducer
 	if (mr_attr_init(&attr) != 0)
 		return -1;
+	
 	//setta il file di log
 	if (mr_attr_set_log_file(&attr, log_path) != 0)
 		return -1;
