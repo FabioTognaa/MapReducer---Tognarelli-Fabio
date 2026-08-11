@@ -152,8 +152,7 @@ int mr_attr_set_queue_size(mr_attr_t *attr, size_t n)
 }
 
 //SETTA IL PATH PER IDENTIFICARE IL FILE DI LOG
-int mr_attr_set_log_file(mr_attr_t *attr, const char *path)
-{
+int mr_attr_set_log_file(mr_attr_t *attr, const char *path){
 	if (attr == NULL)
 		return mr_fail_inval();
 
@@ -200,8 +199,7 @@ int mr_create(mr_t *mr, const mr_attr_t *attr, mr_mapper_t mapper, mr_reducer_t 
 }
 
 //ELIMINA UN MAP REDUCER
-int mr_destroy(mr_t mr)
-{
+int mr_destroy(mr_t mr){
 	if (mr == NULL)
 		return mr_fail_inval();
 

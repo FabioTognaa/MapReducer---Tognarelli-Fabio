@@ -34,7 +34,7 @@ static int make_input_file(char *path, char *content){
 	return 0;
 }
 
-//crea una dir di input temporanea
+//crea una dir di input temporanea con test minimo su file multipli
 static int make_input_dir(char path[], char *file1, char *file2, char *content1, char *content2){
 
 	//crea la cartella
@@ -95,44 +95,186 @@ static int make_input_dir(char path[], char *file1, char *file2, char *content1,
 	//ritorna
 	return 0;
 }
+
+//funzione per semplificare il processo di: mr_attr_init -> mr_create -> mr_start -> mr_destroy -> cleanup
+static int mr_run(mr_attr_t *attr, mr_t *mr, const char *input_path, const char *output_path, mr_mapper_t mapper, mr_reducer_t reducer, void *user_arg){
+
+	//mr_attr_init
+	if(mr_attr_init(attr) != 0)
+		return -1;
+
+	//mr_create
+	if(mr_create(mr, (const mr_attr_t*)attr, mapper, reducer, user_arg) != 0){
+		mr_attr_destroy(attr);
+		return -1;
+	}
+
+	
+	//mr_start
+	if(mr_start(*mr, input_path, output_path) != 0){
+		mr_attr_destroy(attr);
+		mr_destroy(*mr);
+		return -1;
+	}
+
+	//mr_destroy
+	if(mr_destroy(*mr) != 0){
+		mr_attr_destroy(attr);
+		return -1;
+	}
+
+	if(mr_attr_destroy(attr) != 0)
+		return -1;
+
+	return 0;
+}
+
+//TODO funzione per leggere tutti i risultati dopo una run di mr
+static int read_all_result(const char *path, ){
+}
+
+//confronta due file per controllare determinismo degli output
+static int cmp_files(const char *path_a, const char *path_b){
+
+	//apre i file in lettura
+	FILE *fd1 = fopen(path_a, "r");
+	if(!fd1)
+		return -1;
+
+	FILE *fd2 = fopen(path_b, "r");
+	if(!fd2){
+		fclose(fd1);
+		return -1;
+	}
+
+	//TODO loop di confronto tra i 2 file
+	while(0){
+
+		//copio il contenuto dei 2 file in 2 buffer
+		char bufa[5000], bufb[5000];
+		size_t la = fread(bufa, sizeof(size_t), sizeof(fd1), fd1);
+		if(la < 0)
+			return -1;
+		size_t lb = fread(bufb, siezof(size_t), sizeof(fd2), fd2);
+		if(lb < 0)
+			return -1;
+
+		//se le lunghezze sono diverse
+		if (la != lb){
+			fclose(fd1);
+			fclose(fd2);
+			return -1;
+		}
+
+		//se si è arrivati a EOF: i file sono uguali
+		if(na == 0){
+			fclose(fd1);
+			fclose(fd2);
+			return 0;
+		}
+
+		//se i byte sono diversi
+		if(memcmp(bufa, bufb, la) != 0){
+			fclose(fd1);
+			fclose(fd2);
+			return 1;
+		}
+	}
+
+}
+
+//funzione mapper word-count di test: emette un token per ogni parola che trova sulla linea di quel file
+static int word_count_mapper(const mr_file_line_t *line, mr_emit_pair_t emit, void *emit_arg, void *user_arg){
+
+	int start = 0, end = 0, in_token = 0;
+	size_t i;
+	//scorre la linea del file
+	for(i = 0; i < line->line_len; i++){
+		
+		//var per la lettera
+		char letter = line->line[i];
+		int is_alnum = (letter >= 'a' && letter <= 'z') || (letter >= 'A' && letter <= 'Z') || (letter >= '0' && letter <= '9');
+
+		//se non ho ancora un token
+		if(in_token == 0){
+			//se alfanumerico
+			if(is_alnum){
+				start = i;
+				end = (int)i;
+				in_token = 1;
+				continue;
+			}
+		}
+
+		//se sono ad un non-alfanumerico
+		if(in_token == 1){
+			if(!is_alnum){
+				end = i;
+				//costruisco spazio per il token
+				size_t token_len = (size_t)(end - start);
+				char *token_buf = malloc(token_len + 1);
+				//controllo su toke_buf
+				if(!token_buf)
+					return -1;
+				memcpy(token_buf, line->line + start, token_len);
+				token_buf[token_len] = '\0';
+				int one = 1;
+				//mando in output la coppia
+				if(emit(token_buf, &one, sizeof(one), emit_arg) != 0){
+					free(token_buf);
+					return -1;
+				}
+				free(token_buf);
+				start = 0;
+				end = 0;
+				in_token = 0;
+				continue;
+			}
+		}
+	}
+	if(in_token){
+		size_t token_len = (size_t)(line->line_len - start);
+			char *token_buf = malloc(token_len + 1);
+			//controllo su toke_buf
+			if(!token_buf)
+				return -1;
+			memcpy(token_buf, line->line + start, token_len);
+			token_buf[token_len] = '\0';
+			int one = 1;
+			//mando in output la coppia
+			if(emit(token_buf, &one, sizeof(one), emit_arg) != 0){
+				free(token_buf);
+				return -1;
+			}
+			free(token_buf);
+			start = 0;
+			end = 0;
+			in_token = 0;
+	}
+	//quando trova un carattere alfanumerico (a-z; A-Z; 0-9) inizia ad annotare il token fino al primo non-alfanumerico che incontra
+	
+	return 0;
+}
+
+//funzione reducer word-count di test
+static int word_count_reducer(){}
+
+
 /*
  * TODO: tests/integration.c — pipeline completa via API pubblica
  * (mr_create → mr_start → mr_destroy)
  * =====================================================================
  * Helper da implementare (prima dei test)
  * =====================================================================
- *
- * write_file(path, content)
- *   Crea/sovrascrive un file di testo con content (stringa C).
- *   Serve per preparare input temporanei sotto /tmp.
- *
- * make_input_dir(dir_template, files[])
- *   mkdtemp + scrive file nominati (es. "a.txt", "b.txt") con contenuti noti.
- *   Utile per il test directory (ordine lessicografico).
- *
  * read_all_results(path, out_records, max_n)  [o loop su mr_read_result]
  *   Apre il file .mro e legge tutti i record con mr_read_result (io.h).
  *   NON interpretare result come stringa C: confronta size + memcmp.
  *   Così verifichi il formato PDF sez. 8 senza dipendere dal word-count.
- *
- * cmp_files(path_a, path_b)
- *   Confronto byte-per-byte di due file (per il test determinismo).
- *
- * run_mr(input, output, attr, mapper, reducer, user_arg)
- *   Sequenza standard:
- *     mr_attr_init / set_* (se attr non già pronto)
- *     mr_create → mr_start(input, output) → mr_destroy
- *     cleanup attr
- *   Restituisce il codice di mr_start (0 / -1). Centralizza il boilerplate.
- *
- *
  * =====================================================================
  * Mapper / reducer di test
  * =====================================================================
  *
- * word_count_mapper / word_count_reducer  (PDF sez. 9)
- *   Mapper: spezza la riga in token ASCII alfanumerici (A-Z a-z 0-9);
- *   per ogni token emette int 1 (sizeof(int) byte).
+ * word_count_reducer  (PDF sez. 9)
  *   Reducer: interpreta values[] come int, somma, emette il totale.
  *   Usato dal happy path e dallo stress thread.
  *
@@ -313,9 +455,6 @@ static int make_input_dir(char path[], char *file1, char *file2, char *content1,
  * 5. test 4 (opaque), test 6 (multithread), test 3 (determinismo)
  * 6. test 7 opzionale + wiring Makefile
  */
-
-// TODO: implementare i test elencati sopra
-
 int main(void)
 {
 	fprintf(stderr, "integration: nessun test implementato\n");
