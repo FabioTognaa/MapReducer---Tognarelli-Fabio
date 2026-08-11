@@ -136,8 +136,7 @@ static int test_mapper_process(void)
 	return 0;
 }
 
-int main(void)
-{
+int main(void){
 	//controllo che le funzioni di test vadano correttamente
 	if (test_mapper_process() != 0) {
 		fprintf(stderr, "test_mapper_process failed\n");
