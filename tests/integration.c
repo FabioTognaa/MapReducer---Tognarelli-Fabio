@@ -256,8 +256,84 @@ static int word_count_mapper(const mr_file_line_t *line, mr_emit_pair_t emit, vo
 	return 0;
 }
 
-//funzione reducer word-count di test
-static int word_count_reducer(){}
+//funzione reducer word-count di test_ per ogni word-token conta il corrispettivo numero di occorrenze e lo scrive in output
+static int word_count_reducer(const char *token, const mr_value_t *values, size_t values_count, mr_emit_result_t emit, void *emit_arg, void *user_arg){
+
+	//emette il numero di occorrenze con il rispettivo token associato
+	int total = (int)values_count;
+	if(emit(token, &total, sizeof(total), emit_arg) != 0){
+		return -1;
+	}
+
+	return 0;
+}
+
+//test completo end-to-end del progetto con un file come input
+static int test_word_count(){
+
+	//setup del mr
+	mr_t mr;
+	mr_attr_t attr;
+
+	if(mr_attr_init(&attr) != 0)
+		return -1;
+
+	//setup attr
+	if( mr_attr_set_mapper_threads(&attr, (size_t)2) != 0)
+		return -1;
+	if( mr_attr_set_reducer_threads(&attr, (size_t)2) != 0)
+		return -1;
+	if( mr_attr_set_queue_size(&attr, (size_t)8) != 0)
+		return -1;
+	if( mr_attr_set_log_file(&attr, NULL) != 0)
+		return -1;
+
+	//creazione file di input
+	char input_path[] = "/tmp/input-file-XXXXXX";
+	char output_path[] = "/tmp/outpu-file-XXXXXX";
+	char *content = "bb aa\n aa\n";
+
+	if(make_input_file(input_path, content) < 0)
+		return -1;
+
+	//creazione file di output
+	if(mkstemp(output_path) < 0){
+		unlink(input_path);
+		return -1;
+	}
+
+	//mr_create
+	if(mr_create(&mr, &attr, word_count_mapper, word_count_reducer, NULL) != 0){
+		unlink(input_path);
+		unlink(output_path);
+		mr_destroy(&mr);
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+
+	//mr_start
+	if(mr_start(&mr, &input_path, output_path) != 0){
+		unlink(input_path);
+		unlink(output_path);
+		mr_destroy(mr);
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+
+	//TODO
+	//mr_destroy
+
+	//mr_attr_destroy
+
+	//scrittura e controllo dei risultati finali in base ai dati forniti in input
+
+
+	unlink(input_path);
+	unlink(output_path);
+	mr_destroy(mr);
+	mr_attr_destroy(&attr);
+	return 0;
+}
 
 
 /*
@@ -273,11 +349,6 @@ static int word_count_reducer(){}
  * =====================================================================
  * Mapper / reducer di test
  * =====================================================================
- *
- * word_count_reducer  (PDF sez. 9)
- *   Reducer: interpreta values[] come int, somma, emette il totale.
- *   Usato dal happy path e dallo stress thread.
- *
  * opaque_mapper / opaque_reducer  (PDF sez. 10)
  *   Mapper: emette valori binari opachi (es. buffer con byte 0 interni,
  *   o una struct serializzata), NON stringhe C.
@@ -301,12 +372,7 @@ static int word_count_reducer(){}
  *   framework non è utilizzabile. Copre fork, pipe, thread, group-by
  *   token, scrittura output. Include di fatto "non hang" e propagazione EOF.
  *
- * Setup:
- *   File temporaneo, es. contenuto:
- *     "aa bb\n"
- *     "aa\n"
- *   Attr ragionevoli (es. 2 mapper, 2 reducer, queue_size 8).
- *   Callback: word_count_*.
+
  *
  * Assert:
  *   - mr_start == 0
