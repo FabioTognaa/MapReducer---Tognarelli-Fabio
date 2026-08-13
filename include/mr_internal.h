@@ -4,7 +4,7 @@
 #include "mr.h"
 #include "log.h"
 
-/* Record accumulato nel main prima della scrittura ordinata sul file di output. */
+// Record accumulato nel main prima della scrittura ordinata sul file di output.
 typedef struct {
 	char *token;
 	void *res;
@@ -12,7 +12,7 @@ typedef struct {
 	size_t token_len;
 } record_from_reducer_t;
 
-/* Definizione reale dell'handle opaco mr_t. */
+// Definizione reale dell'handle opaco mr_t.
 struct mr {
 	mr_attr_t attr;
 	mr_mapper_t mapper;
