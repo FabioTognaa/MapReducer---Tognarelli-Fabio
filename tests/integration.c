@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include "mr.h"
 #include "io.h"
 
@@ -909,6 +910,61 @@ static int test_integration_multithread_small_queue(void){
 	return 0;
 }
 
+//input inesistente: mr_start deve fallire subito (no hang) con errno != 0;
+//seconda mr_start sulla stessa mr_t deve dare EINVAL (policy one-shot)
+static int test_missing_input_and_one_shot(void){
+	mr_t mr = NULL;
+	mr_attr_t attr;
+	char log_path[] = "/tmp/mr_int_miss_log_XXXXXX";
+	char output_path[] = "/tmp/mr_int_miss_out_XXXXXX";
+
+	if(mr_attr_init(&attr) != 0)
+		return -1;
+	if(make_log_path(log_path) != 0){
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+	if(make_output_file(output_path) != 0){
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+	if(mr_attr_set_log_file(&attr, log_path) != 0){
+		unlink(output_path);
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+	if(mr_create(&mr, &attr, silent_mapper, dummy_reducer, NULL) != 0){
+		unlink(output_path);
+		unlink(log_path);
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+
+	errno = 0;
+	if(mr_start(mr, "/tmp/mr_int_no_such_input", output_path) != -1 || errno == 0){
+		mr_destroy(mr);
+		unlink(output_path);
+		unlink(log_path);
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+
+	errno = 0;
+	if(mr_start(mr, "/tmp/mr_int_no_such_input", output_path) != -1 || errno != EINVAL){
+		mr_destroy(mr);
+		unlink(output_path);
+		unlink(log_path);
+		mr_attr_destroy(&attr);
+		return -1;
+	}
+
+	mr_destroy(mr);
+	unlink(output_path);
+	unlink(log_path);
+	mr_attr_destroy(&attr);
+	return 0;
+}
+
 
 //main
 int main(void)
@@ -936,6 +992,10 @@ int main(void)
 	}
 	if(test_integration_multithread_small_queue() != 0){
 		fprintf(stderr, "test_integration_multithread_small_queue fallito\n");
+		return 1;
+	}
+	if(test_missing_input_and_one_shot() != 0){
+		fprintf(stderr, "test_missing_input_and_one_shot fallito\n");
 		return 1;
 	}
 

@@ -17,8 +17,8 @@ SCELTE FORMATO DEL LOG:
 - formato del timestamp di un log: LOG_TS_FMT
 
 - valori del processo nel quale viene fatto il log: "main", "mapper", "reducer"
-- nome evento del log (pipe, fork, thrd_start...): "pipe", "fork", "thrd_start"
-- id del thread che fa il log: 0 se main, thrd_current() se mapper o reducer
+- nome evento del log: "pipe", "fork", "thrd_start", "thrd_end", ...
+- id del thread: 0 per main/reader, 1..N per i worker
 - messaggio del log: "testo del log in questione"
 
 [2026-06-21 14:30:01] [main] [0] [pipe_create] created 3 pipes

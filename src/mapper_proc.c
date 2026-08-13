@@ -17,7 +17,9 @@ static int check_tkn(const char* str, mr_log_t *log){
     for(int i = 0; str[i] != '\0'; i++){
 
         //controllo tramite valori ASCII
-        if(!(str[i] >= 'a' && str[i] <= 'z' || str[i] >= 'A' && str[i] <= 'Z' || str[i] >= '0' && str[i] <= '9')){
+        if(!((str[i] >= 'a' && str[i] <= 'z') ||
+             (str[i] >= 'A' && str[i] <= 'Z') ||
+             (str[i] >= '0' && str[i] <= '9'))){
             mr_log_write(log, "mapper", 0, "error", "token in uscita dal mapper non valido");
             return -1;
         }
@@ -39,7 +41,7 @@ static int mapper_emit_pair(const char* token, const void* value, size_t value_s
 
     //prendo il mutex
     if(mtx_lock(&ctx->out_mtx) != thrd_success){
-        (mr_log_write(ctx->log, "mapper", 0, "error", "acquisizione mtx del mapper ins crittura su reducer fallita") == -1);
+        mr_log_write(ctx->log, "mapper", 0, "error", "acquisizione mtx del mapper in scrittura su reducer fallita");
         ctx->error = 1;
         return -1;
     }
@@ -185,31 +187,30 @@ int mapper_process_main(mr_t mr){
     //thrds worker
     thrd_t workers[ctx.n_workers];
 
-    int n_created = 0;
-    for(int i = 0; i < ctx.n_workers; i++){
+    size_t n_created = 0;
+    for(size_t i = 0; i < ctx.n_workers; i++){
 
         if(thrd_create(&workers[i], mapper_worker_main, &ctx) != thrd_success){
             mr_queue_close(&ctx.queue);
             thrd_join(reader, NULL);
-            for (int j = 0; j < n_created; j++)
+            for (size_t j = 0; j < n_created; j++)
                 thrd_join(workers[j], NULL);
             mr_queue_destroy(&ctx.queue);
             mtx_destroy(&ctx.out_mtx);
             return -1;
         }
+        n_created++;
 
-        //log: creazione thrd worker
-        if(mr_log_write(ctx.log, "mapper", 0, "thrd_start", "worker thread created") == -1){
+        //log: creazione thrd worker (id 1..N)
+        if(mr_log_write(ctx.log, "mapper", i + 1, "thrd_start", "worker thread created") == -1){
             mr_queue_close(&ctx.queue);
             thrd_join(reader, NULL);
-            for (int j = 0; j < n_created; j++)
+            for (size_t j = 0; j < n_created; j++)
                 thrd_join(workers[j], NULL);
             mr_queue_destroy(&ctx.queue);
             mtx_destroy(&ctx.out_mtx);
             return -1;
         }
-
-        n_created++;
     }
     
     int res;
@@ -218,10 +219,13 @@ int mapper_process_main(mr_t mr){
         ctx.error = 1;
         mr_queue_close(&ctx.queue);
     }
+    mr_log_write(ctx.log, "mapper", 0, "thrd_end", "reader thread joined");
+
     //poi degli workers
-    for(int i = 0; i < ctx.n_workers; i++){
+    for(size_t i = 0; i < ctx.n_workers; i++){
         if(thrd_join(workers[i], &res) != thrd_success || res == -1)
             ctx.error = 1;
+        mr_log_write(ctx.log, "mapper", i + 1, "thrd_end", "worker thread joined");
     }
     mr_queue_destroy(&ctx.queue);
     mtx_destroy(&ctx.out_mtx);
@@ -235,7 +239,6 @@ int mapper_process_main(mr_t mr){
 
     if(ctx.error){
         mr_log_write(ctx.log, "mapper", 0, "error", "Errore nel processo di mapping");
-        close(STDOUT_FILENO);
         return -1;
     }
 

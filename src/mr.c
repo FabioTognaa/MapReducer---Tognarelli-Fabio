@@ -221,8 +221,7 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 	//setto correttamente lo start
 	if(mr->started)
 		return mr_fail_inval();
-	
-		mr->started = 1;
+	mr->started = 1;
 
 	//creazione delle pipe per la comunicazione tra processi
 	int main_to_mapper [2];			//main -> mapper
@@ -538,12 +537,7 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		
 		//waitpid sui figli
 		if(wait_children(mr, st.pid_mapper, st.pid_reducer) != 0)
-			mr->error = 1;
+			return -1;
 	}
-	if(mr->error == 1){
-
-		
-		return -1;
-	}
-	return mr->error ? -1 : 0;
+	return 0;
 }

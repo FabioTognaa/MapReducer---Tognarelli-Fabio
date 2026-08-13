@@ -1,8 +1,6 @@
 #define _GNU_SOURCE
 #include "reducer_proc.h"
 
-//TODO: fare in modo che la scrittura sul main non avvenga parallelamente ed in modo alfanumerico
-
 //ORDINAMENTO ALFANUMERICO DEI TOKEN NELLA LISTA DA PROCESSARE
 static int cmp_tkn(const void *a, const void *b){
     const token_group_t *ta = a;
@@ -340,9 +338,12 @@ int reducer_process_main(mr_t mr){
         mtx_destroy(&ctx.out_mtx);
         return -1;
     }
+    mr_log_write(ctx.log, "reducer", 0, "thrd_start", "reader thread created");
 
     //attendo che il reader abbia finito di leggere dal main
-    if(thrd_join(reader, &res) != thrd_success || res != 0){
+    int reader_fail = (thrd_join(reader, &res) != thrd_success || res != 0);
+    mr_log_write(ctx.log, "reducer", 0, "thrd_end", "reader thread joined");
+    if(reader_fail){
         close(STDOUT_FILENO);
         ctx.error = 1;
         mtx_destroy(&ctx.out_mtx);
@@ -369,6 +370,7 @@ int reducer_process_main(mr_t mr){
         //inizializzo i thrds
         thrd_t workers[ctx.n_workers];
         reducer_work_t works[batch];
+        size_t n_created = 0;
         
         //creazione degli worker 
         for(size_t i = 0; i < batch; i++){
@@ -377,15 +379,37 @@ int reducer_process_main(mr_t mr){
             works[i].g = &ctx.groups[start + i];
             if(thrd_create(&workers[i], reducer_worker_main, &works[i]) != thrd_success){
                 ctx.error = 1;
+                //salvo il log
+                mr_log_write(ctx.log, "reducer", 0, "error", "creazione thrd worker fallita");
+                //faccio il join dei thrd che sono stati creati
+                for(size_t j = 0; j < n_created; j++)
+                    thrd_join(workers[j], NULL);
+                
+                // gruppi non ancora presi in carico da un worker
+                for(size_t k = start + n_created; k < ctx.groups_len; k++){
+                    token_group_t *g = &ctx.groups[k];
+                    for(size_t v = 0; v < g->count; v++)
+                        free(g->data[v]);
+                    free(g->data);
+                    free(g->sizes);
+                    free(g->token);
+                }
+                free(ctx.groups);
+                mtx_destroy(&ctx.out_mtx);
+                close(STDOUT_FILENO);
                 return -1;
             }
+            //aggiornamento dei worker creati e log
+            n_created++;
+            mr_log_write(ctx.log, "reducer", i + 1, "thrd_start", "worker thread created");
         }
 
 
         //join degli worker
-        for(int j = 0; j < batch; j++){
+        for(size_t j = 0; j < batch; j++){
             if(thrd_join(workers[j], &res) != thrd_success || res != 0)
                 ctx.error = 1;
+            mr_log_write(ctx.log, "reducer", j + 1, "thrd_end", "worker thread joined");
         }
 
     }

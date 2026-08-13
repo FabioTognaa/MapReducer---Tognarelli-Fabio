@@ -30,10 +30,8 @@ int mr_create_log(mr_log_t *log, char *file_name){
     log->fd = open(file_name, O_WRONLY | O_CREAT | O_APPEND, 0644);
     
     //apre il file di log con il nome scelto
-    if(log->fd < 0){
-        perror("Errore: open su log file");
+    if(log->fd < 0)
         return -1;
-    }
 
     //creo la stringa per sem_open
     snprintf(log->sem_name, sizeof(log->sem_name), "/%d", getpid());
@@ -41,7 +39,6 @@ int mr_create_log(mr_log_t *log, char *file_name){
     //inizializzo il semaforo
     if((log->sem = sem_open(log->sem_name, O_CREAT, 0644, 1)) == SEM_FAILED){
         close(log->fd);
-        perror("Errore: sem_open del file log");
         return -1;
     }
 
@@ -73,12 +70,11 @@ int mr_log_write( mr_log_t *log, const char *process_name, size_t thrd_id, const
 
     if((size_t)len >= sizeof(line)){
         sem_post(log->sem);
-        perror("Errore: linea scritta nel log troppo grande per il buffer");
+        errno = EINVAL;
         return -1;
     }
     if(writen(log->fd, line, (size_t)len) < 0){
         sem_post(log->sem);
-        perror("Errore: scrittura su file log");
         return -1;
     }
 
@@ -107,10 +103,11 @@ int mr_log_close(mr_log_t *log){
 EVENTI DA LOGGARE:
 - Creazione della pipe
 - fork per mapper e reducer
-- avvio e terminazione di ogni thread
+- avvio (thrd_start) e terminazione (thrd_end) di ogni thread
 - apertura e chiusura dei file di input ed output
 - conteggio delle righe inviate dal main al mapper
 - conteggio delle coppie create
 - token distinti
+- risultati finali
 - eventuali errori
 */
