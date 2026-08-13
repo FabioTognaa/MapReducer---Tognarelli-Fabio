@@ -20,6 +20,8 @@ TEST_IO         = tests/io
 TEST_IO_SRC     = tests/io.c
 TEST_REDUCER    = tests/reducer
 TEST_REDUCER_SRC = tests/reducer.c
+TEST_INTEGRATION     = tests/integration
+TEST_INTEGRATION_SRC = tests/integration.c
 
 .PHONY: all test clean
 
@@ -34,12 +36,13 @@ $(EXAMPLE): $(EXAMPLE_SRC) $(LIBMR)
 src/%.o: src/%.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
 
-test: $(LIBMR) $(TEST_LOG) $(TEST_INPUT) $(TEST_MAPPER) $(TEST_IO) $(TEST_REDUCER)
+test: $(LIBMR) $(TEST_LOG) $(TEST_INPUT) $(TEST_MAPPER) $(TEST_IO) $(TEST_REDUCER) $(TEST_INTEGRATION)
 	./$(TEST_LOG)
 	./$(TEST_INPUT)
 	./$(TEST_MAPPER)
 	./$(TEST_IO)
 	./$(TEST_REDUCER)
+	./$(TEST_INTEGRATION)
 
 $(TEST_LOG): $(TEST_LOG_SRC) $(LIBMR)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_LOG_SRC) $(LIBMR) -pthread
@@ -56,5 +59,8 @@ $(TEST_IO): $(TEST_IO_SRC) $(LIBMR)
 $(TEST_REDUCER): $(TEST_REDUCER_SRC) $(LIBMR)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_REDUCER_SRC) $(LIBMR) -pthread
 
+$(TEST_INTEGRATION): $(TEST_INTEGRATION_SRC) $(LIBMR)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_INTEGRATION_SRC) $(LIBMR) -pthread
+
 clean:
-	rm -f $(LIBMR) $(LIBMR_OBJS) $(EXAMPLE) $(TEST_LOG) $(TEST_INPUT) $(TEST_MAPPER) $(TEST_IO) $(TEST_REDUCER)
+	rm -f $(LIBMR) $(LIBMR_OBJS) $(EXAMPLE) $(TEST_LOG) $(TEST_INPUT) $(TEST_MAPPER) $(TEST_IO) $(TEST_REDUCER) $(TEST_INTEGRATION)

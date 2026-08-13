@@ -40,8 +40,7 @@
  * - test_eof_result: mr_read_result() su pipe vuota chiusa
  *
  * fix compilazione
- * - test_truncated_payload: sostituire mr_pair_header_t (tipo interno a src/io.c) con
- *   due int locali { token_len = 5, value_len = 0 } scritti con writen()
+ * - test_truncated_payload: header come due int locali + token troncato
  */
 
 //testa il funzionamento di readn e writen
@@ -363,11 +362,10 @@ static int test_write_pair_invalid_token(void){
 }
 
 //simula un invio in scrittura di un header completo e di un token troncato
-// TODO: fix mr_pair_header_t -> due int locali (tipo non esposto in io.h)
 static int test_truncated_payload(void){
-    //inizializzo header e altri parametri
     int p[2];
-    mr_pair_header_t hdr = { .token_len = 5, .value_len = 0 };
+    int token_len = 5;
+    int value_len = 0;
     char *token = NULL;
     void *value = NULL;
     size_t value_size = 0;
@@ -376,9 +374,10 @@ static int test_truncated_payload(void){
     if (pipe(p) != 0)
         return -1;
 
-    //scrivo header e token troncato
-    writen(p[1], &hdr, sizeof(hdr));
-    writen(p[1], "ab", 2);   
+    // header come due int (layout di mr_pair_header_t in src/io.c, non esposto)
+    writen(p[1], &token_len, sizeof(token_len));
+    writen(p[1], &value_len, sizeof(value_len));
+    writen(p[1], "ab", 2);   /* token troncato: 2 byte invece di 5 */
     close(p[1]);
     errno = 0;
 
