@@ -44,12 +44,12 @@ int main(void)
 
 	assert(mr_create(&mr, &attr, dummy_mapper, dummy_reducer, NULL) == 0);
 
+	/* mr_create copia attr: modificarlo dopo non deve invalidare l'handle */
 	attr.mapper_threads = 99;
-	assert(mr->attr.mapper_threads == 4);
+
+	assert(mr_destroy(mr) == 0);
+	assert(mr_attr_destroy(&attr) == 0);
 
 	printf("Fase 1: tutti i test passati.\n");
-
-	mr_destroy(mr);
-	mr_attr_destroy(&attr);
 	return 0;
 }

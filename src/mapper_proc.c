@@ -1,4 +1,5 @@
 #include "mapper_proc.h"
+#include "mr_internal.h"
 #include "log.h"
 
 

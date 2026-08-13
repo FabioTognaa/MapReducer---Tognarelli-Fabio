@@ -1,4 +1,4 @@
-#include "mr.h"
+#include "mr_internal.h"
 #include "io.h"
 #include "mapper_proc.h"
 #include "reducer_proc.h"

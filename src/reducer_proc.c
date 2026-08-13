@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "reducer_proc.h"
+#include "mr_internal.h"
 
 //ORDINAMENTO ALFANUMERICO DEI TOKEN NELLA LISTA DA PROCESSARE
 static int cmp_tkn(const void *a, const void *b){

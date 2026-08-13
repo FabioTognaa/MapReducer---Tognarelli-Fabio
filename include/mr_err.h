@@ -1,4 +1,4 @@
-#include "mr.h"
+#include "mr_internal.h"
 
 typedef struct { 
     int mapper_write_fd;    //file descriptor della pipe di write del mapper

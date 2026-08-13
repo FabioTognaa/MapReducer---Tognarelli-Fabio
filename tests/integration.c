@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include "mr.h"
+#include "mr_internal.h"
 #include "io.h"
 
 /* numero massimo di record letti da un file di output nei test */

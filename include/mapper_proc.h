@@ -6,6 +6,7 @@
 #include "io.h"
 #include "queue.h"
 #include "mr.h"
+#include "log.h"
 
 //struct di contesto per tutto il mapper
 typedef struct{
