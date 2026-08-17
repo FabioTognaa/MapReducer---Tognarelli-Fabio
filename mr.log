@@ -1,0 +1,87 @@
+[2026-08-17 23:00:11] [main] [0] [pipe] created 3 pipes
+[2026-08-17 23:00:11] [main] [0] [fork] mapper process created
+[2026-08-17 23:00:11] [main] [0] [fork] mapper process created
+[2026-08-17 23:00:11] [main] [0] [fork] reducer process created
+[2026-08-17 23:00:11] [main] [0] [apertura file di input] 
+[2026-08-17 23:00:11] [main] [0] [error] mr_send_input nel main fallito
+[2026-08-17 23:00:11] [main] [0] [fork] reducer process created
+[2026-08-17 23:00:11] [mapper] [0] [thrd_start] reader thread created
+[2026-08-17 23:00:11] [mapper] [1] [thrd_start] worker thread created
+[2026-08-17 23:00:11] [reducer] [0] [thrd_start] reader thread created
+[2026-08-17 23:00:11] [mapper] [2] [thrd_start] worker thread created
+[2026-08-17 23:00:11] [mapper] [0] [thrd_end] reader thread joined
+[2026-08-17 23:00:11] [mapper] [1] [thrd_end] worker thread joined
+[2026-08-17 23:00:11] [mapper] [2] [thrd_end] worker thread joined
+[2026-08-17 23:00:11] [mapper] [0] [stats] Numero di coppie inviate dal mapper: 0
+[2026-08-17 23:00:11] [reducer] [0] [thrd_end] reader thread joined
+[2026-08-17 23:00:11] [reducer] [0] [stats] numero di token distinti: 0
+[2026-08-17 23:00:56] [main] [0] [pipe] created 3 pipes
+[2026-08-17 23:00:56] [main] [0] [fork] mapper process created
+[2026-08-17 23:00:56] [main] [0] [fork] mapper process created
+[2026-08-17 23:00:56] [main] [0] [fork] reducer process created
+[2026-08-17 23:00:56] [main] [0] [apertura file di input] 
+[2026-08-17 23:00:56] [main] [0] [fork] reducer process created
+[2026-08-17 23:00:56] [mapper] [0] [thrd_start] reader thread created
+[2026-08-17 23:00:56] [mapper] [1] [thrd_start] worker thread created
+[2026-08-17 23:00:56] [reducer] [0] [thrd_start] reader thread created
+[2026-08-17 23:00:56] [mapper] [2] [thrd_start] worker thread created
+[2026-08-17 23:00:56] [main] [0] [chiusura file di input] 
+[2026-08-17 23:00:56] [main] [0] [stats] lines sent to mapper: 2
+[2026-08-17 23:00:56] [main] [0] [read] lettura dei risultati finali dei record
+[2026-08-17 23:00:56] [mapper] [0] [thrd_end] reader thread joined
+[2026-08-17 23:00:56] [mapper] [1] [thrd_end] worker thread joined
+[2026-08-17 23:00:56] [mapper] [2] [thrd_end] worker thread joined
+[2026-08-17 23:00:56] [mapper] [0] [stats] Numero di coppie inviate dal mapper: 0
+[2026-08-17 23:00:56] [reducer] [0] [thrd_end] reader thread joined
+[2026-08-17 23:00:56] [reducer] [0] [stats] numero di token distinti: 0
+[2026-08-17 23:00:56] [main] [0] [stats] numero di record prodotti: 0
+[2026-08-17 23:00:56] [main] [0] [output] opening output file
+[2026-08-17 23:00:56] [main] [0] [output] closing output file
+[2026-08-17 23:02:23] [main] [0] [pipe] created 3 pipes
+[2026-08-17 23:02:23] [main] [0] [fork] mapper process created
+[2026-08-17 23:02:23] [main] [0] [fork] mapper process created
+[2026-08-17 23:02:23] [main] [0] [fork] reducer process created
+[2026-08-17 23:02:23] [main] [0] [apertura file di input] 
+[2026-08-17 23:02:23] [main] [0] [fork] reducer process created
+[2026-08-17 23:02:23] [main] [0] [chiusura file di input] 
+[2026-08-17 23:02:23] [main] [0] [stats] lines sent to mapper: 2
+[2026-08-17 23:02:23] [main] [0] [read] lettura dei risultati finali dei record
+[2026-08-17 23:02:23] [mapper] [0] [thrd_start] reader thread created
+[2026-08-17 23:02:23] [reducer] [0] [thrd_start] reader thread created
+[2026-08-17 23:02:23] [mapper] [1] [thrd_start] worker thread created
+[2026-08-17 23:02:23] [mapper] [2] [thrd_start] worker thread created
+[2026-08-17 23:02:23] [mapper] [0] [thrd_end] reader thread joined
+[2026-08-17 23:02:23] [mapper] [1] [thrd_end] worker thread joined
+[2026-08-17 23:02:23] [mapper] [2] [thrd_end] worker thread joined
+[2026-08-17 23:02:23] [mapper] [0] [stats] Numero di coppie inviate dal mapper: 0
+[2026-08-17 23:02:23] [reducer] [0] [thrd_end] reader thread joined
+[2026-08-17 23:02:23] [reducer] [0] [stats] numero di token distinti: 0
+[2026-08-17 23:02:23] [main] [0] [stats] numero di record prodotti: 0
+[2026-08-17 23:02:23] [main] [0] [output] opening output file
+[2026-08-17 23:02:23] [main] [0] [output] closing output file
+[2026-08-17 23:18:15] [main] [0] [pipe] created 3 pipes
+[2026-08-17 23:18:15] [main] [0] [fork] mapper process created
+[2026-08-17 23:18:15] [main] [0] [fork] mapper process created
+[2026-08-17 23:18:15] [main] [0] [fork] reducer process created
+[2026-08-17 23:18:15] [main] [0] [apertura file di input] 
+[2026-08-17 23:18:15] [main] [0] [fork] reducer process created
+[2026-08-17 23:18:15] [mapper] [0] [thrd_start] reader thread created
+[2026-08-17 23:18:15] [main] [0] [chiusura file di input] 
+[2026-08-17 23:18:15] [main] [0] [stats] lines sent to mapper: 2
+[2026-08-17 23:18:15] [main] [0] [read] lettura dei risultati finali dei record
+[2026-08-17 23:18:15] [mapper] [1] [thrd_start] worker thread created
+[2026-08-17 23:18:15] [reducer] [0] [thrd_start] reader thread created
+[2026-08-17 23:18:15] [mapper] [2] [thrd_start] worker thread created
+[2026-08-17 23:18:15] [mapper] [0] [thrd_end] reader thread joined
+[2026-08-17 23:18:15] [mapper] [1] [thrd_end] worker thread joined
+[2026-08-17 23:18:15] [mapper] [2] [thrd_end] worker thread joined
+[2026-08-17 23:18:15] [mapper] [0] [stats] Numero di coppie inviate dal mapper: 3
+[2026-08-17 23:18:15] [reducer] [0] [thrd_end] reader thread joined
+[2026-08-17 23:18:15] [reducer] [0] [stats] numero di token distinti: 2
+[2026-08-17 23:18:15] [reducer] [1] [thrd_start] worker thread created
+[2026-08-17 23:18:15] [reducer] [2] [thrd_start] worker thread created
+[2026-08-17 23:18:15] [reducer] [1] [thrd_end] worker thread joined
+[2026-08-17 23:18:15] [reducer] [2] [thrd_end] worker thread joined
+[2026-08-17 23:18:15] [main] [0] [stats] numero di record prodotti: 2
+[2026-08-17 23:18:15] [main] [0] [output] opening output file
+[2026-08-17 23:18:15] [main] [0] [output] closing output file

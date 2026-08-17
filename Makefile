@@ -7,8 +7,10 @@ ARFLAGS = rcs
 LIBMR      = libmr.a
 LIBMR_OBJS = src/mr.o src/io.o src/log.o src/input.o src/queue.o src/mapper_proc.o 	src/reducer_proc.o
 
-EXAMPLE     = examples/minimal
-EXAMPLE_SRC = examples/minimal.c
+EXAMPLE_MINIMAL     = examples/minimal
+EXAMPLE_MINIMAL_SRC = examples/minimal.c
+EXAMPLE_WORD_COUNT     = examples/word-count
+EXAMPLE_WORD_COUNT_SRC = examples/word-count.c
 
 TEST_LOG      	= tests/log
 TEST_LOG_SRC  	= tests/log.c
@@ -30,8 +32,11 @@ all: $(LIBMR) $(EXAMPLE)
 $(LIBMR): $(LIBMR_OBJS)
 	$(AR) $(ARFLAGS) $@ $^
 
-$(EXAMPLE): $(EXAMPLE_SRC) $(LIBMR)
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(EXAMPLE_SRC) $(LIBMR) -pthread
+$(EXAMPLE_MINIMAL): $(EXAMPLE_MINIMAL_SRC) $(LIBMR)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(EXAMPLE_MINIMAL_SRC) $(LIBMR) -pthread
+
+$(EXAMPLE_WORD_COUNT): $(EXAMPLE_WORD_COUNT_SRC) $(LIBMR)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(EXAMPLE_WORD_COUNT_SRC) $(LIBMR) -pthread
 
 src/%.o: src/%.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<

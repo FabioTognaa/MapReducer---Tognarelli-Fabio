@@ -1,10 +1,13 @@
-#include <assert.h>
+/*
+ * MINIMAL:
+ * Esempio minimo di uso di libmr: pipeline end-to-end con mapper/reducer
+ * che non emettono nulla. Uso: ./minimal <input> <output>
+ */
+
 #include <stdio.h>
 #include "mr.h"
 
-static int dummy_mapper(const mr_file_line_t *line, mr_emit_pair_t emit,
-			void *emit_arg, void *user_arg)
-{
+static int mapper(const mr_file_line_t *line, mr_emit_pair_t emit, void *emit_arg, void *user_arg){
 	(void)line;
 	(void)emit;
 	(void)emit_arg;
@@ -12,10 +15,7 @@ static int dummy_mapper(const mr_file_line_t *line, mr_emit_pair_t emit,
 	return 0;
 }
 
-static int dummy_reducer(const char *token, const mr_value_t *values,
-			 size_t values_count, mr_emit_result_t emit,
-			 void *emit_arg, void *user_arg)
-{
+static int reducer(const char *token, const mr_value_t *values, size_t values_count, mr_emit_result_t emit, void *emit_arg, void *user_arg){
 	(void)token;
 	(void)values;
 	(void)values_count;
@@ -25,31 +25,61 @@ static int dummy_reducer(const char *token, const mr_value_t *values,
 	return 0;
 }
 
-int main(void)
-{
+int main(int argc, char **argv){
 	mr_attr_t attr;
 	mr_t mr;
 
-	assert(mr_attr_init(&attr) == 0);
-	assert(attr.mapper_threads == 1);
-	assert(attr.reducer_threads == 1);
-	assert(attr.queue_size > 0);
-	assert(attr.log_file == NULL);
+	if (argc != 3) {
+		fprintf(stderr, "uso: %s <input> <output>\n", argv[0]);
+		return 1;
+	}
 
-	assert(mr_attr_set_mapper_threads(&attr, 4) == 0);
-	assert(mr_attr_set_mapper_threads(&attr, 0) == -1);
+	if (mr_attr_init(&attr) != 0) {
+		fprintf(stderr, "mr_attr_init\n");
+		return 1;
+	}
 
-	assert(mr_attr_set_reducer_threads(&attr, 2) == 0);
-	assert(attr.reducer_threads == 2);
+	if (mr_attr_set_mapper_threads(&attr, 2) != 0) {
+		fprintf(stderr, "mr_attr_set_mapper_threads\n");
+		mr_attr_destroy(&attr);
+		return 1;
+	}
 
-	assert(mr_create(&mr, &attr, dummy_mapper, dummy_reducer, NULL) == 0);
+	if (mr_attr_set_reducer_threads(&attr, 2) != 0) {
+		fprintf(stderr, "mr_attr_set_reducer_threads\n");
+		mr_attr_destroy(&attr);
+		return 1;
+	}
 
-	/* mr_create copia attr: modificarlo dopo non deve invalidare l'handle */
-	attr.mapper_threads = 99;
+	if (mr_attr_set_queue_size(&attr, 64) != 0) {
+		fprintf(stderr, "mr_attr_set_queue_size\n");
+		mr_attr_destroy(&attr);
+		return 1;
+	}
 
-	assert(mr_destroy(mr) == 0);
-	assert(mr_attr_destroy(&attr) == 0);
+	if (mr_create(&mr, &attr, mapper, reducer, NULL) != 0) {
+		fprintf(stderr, "mr_create\n");
+		mr_attr_destroy(&attr);
+		return 1;
+	}
 
-	printf("Fase 1: tutti i test passati.\n");
+	if (mr_start(mr, argv[1], argv[2]) != 0) {
+		fprintf(stderr, "mr_start\n");
+		mr_destroy(mr);
+		mr_attr_destroy(&attr);
+		return 1;
+	}
+
+	if (mr_destroy(mr) != 0) {
+		fprintf(stderr, "mr_destroy\n");
+		mr_attr_destroy(&attr);
+		return 1;
+	}
+
+	if (mr_attr_destroy(&attr) != 0) {
+		fprintf(stderr, "mr_attr_destroy\n");
+		return 1;
+	}
+
 	return 0;
 }
