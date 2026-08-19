@@ -1,5 +1,6 @@
 ```{=typst}
 #set par(leading: 0.75em, spacing: 0.65em)
+#let vuoto(n: 1) = v(n * 0.75em)
 #show heading: set block(sticky: true)
 #show heading.where(level: 1): set block(above: 0.3em, below: 0.55em)
 #show heading.where(level: 1): set text(size: 22pt)
@@ -42,7 +43,11 @@ In questa sezione iniziale viene presentato il progetto, compreso della sua arch
 
 Partiamo con il dire che si tratta di un framework utilizzabile tramite la libreria statica `libmr`(`libmr.a`, con header pubblico `include/mr.h`).
 
-Il programma utente dovrà fornire in input solo due funzioni di callback, relative al processo di mapping e di reducing (`mr_mapper_t`, `mr_reducer_t`); una volta fatto cio' il framework leggera' l’input, eseguira' la pipeline di processi, raggruppera' per token e scrivera' l’output risultante.
+Il programma utente dovrà fornire in input solo due funzioni di callback, relative al processo di mapping e di reducing (`mr_mapper_t`, `mr_reducer_t`); una volta fatto ciò il framework leggerà l’input, eseguirà la pipeline di processi, raggrupperà per token e scriverà l’output risultante.
+
+```{=typst}
+#vuoto()
+```
 
 Vi sono **3 processi** principali, i quali comunicano via **pipe**
 
@@ -52,10 +57,18 @@ Vi sono **3 processi** principali, i quali comunicano via **pipe**
 
 - **reducer**: accumula tutte le coppie, raggruppa per token, invoca la callback reducer una volta per token distinto, serializza i risultati verso il main.
 
+```{=typst}
+#vuoto()
+```
+
 **Input**:
 
 - _file regolare_ singolo,
-- _directory_ di sistema contenente piu' file di testo (non e' prevista esplorazione ricorsiva delle sottocartelle, si considerano quindi solo i file direttamente figli della cartella stessa), in **ordine lessicografico** sul nome.
+- _directory_ contenente più file di testo (non è prevista esplorazione ricorsiva delle sottocartelle, si considerano quindi solo i file direttamente figli della cartella stessa), in **ordine lessicografico** sul nome.
+
+```{=typst}
+#vuoto()
+```
 
 Ogni file viene trattato come una sequenza di **righe logiche**: il carattere di fine riga: `'\n'` non fa parte del contenuto passato al mapper, ultima riga inclusa.
 File vuoti e righe vuote sono ammessi e gestiti correttamente.
@@ -63,9 +76,15 @@ Per quanto riguarda la serializzazione della riga sulla pipe nel dettaglio consu
 
 I puntatori in `mr_file_line_t` e in `mr_value_t` valgono solo durante la callback: `emit` copia token e byte opachi prima di ritornare.
 
-Il `seguente grafico` mostra la **pipeline end-to-end** dei processi nel programma.
+Il _seguente grafico_ mostra la **pipeline end-to-end** dei processi nel programma.
 La pipeline è lineare: il main è sia sorgente delle righe sia il collettore dei risultati.
-Sotto ogni stadio vi è l’ordine in cui si chiude il lato _write_ (EOF sul _read_ da main -> mapper). Senza i punti (1)–(3) un lettore resta bloccato in attesa di ricevere qualcosa in input.
+Sotto ogni stadio vi è l’ordine in cui si chiude il lato _write_ (EOF sul _read_ da main -> mapper).
+
+```{=typst}
+#vuoto()
+```
+
+Senza i punti (1)–(3) un lettore resta bloccato in attesa di ricevere qualcosa in input.
 Gli worker paralleli gestiti dai thread non chiudono la pipe verso il reducer o verso il main.
 
 ```{=typst}
@@ -200,6 +219,10 @@ Un messaggio troncato o una lunghezza invalida, **dentro** `io.c`, è `EINVAL`. 
 })
 ```
 
+```{=typst}
+#vuoto()
+```
+
 **Scelta.** `io.c` e `queue.c` non loggano. Il parent usa uno snapshot (`mr_start_state_t`) e un cleanup unico; i figli in setup usano `mr_child_fail`. Si salva `errno` prima di ogni `log`/`close`/`waitpid`.
 
 **Perché.** Lo stesso I/O vive in tre processi: un log in foglia produce righe doppie. Un cleanup sparso lascia descrittori aperti e la pipeline si blocca in attesa di EOF. Dopo una `close`, `errno` non è più quello della failure. `_exit(1)` è l’unico canale figlio–padre; il parent lo traduce in `EIO` e non ripete il messaggio già scritto dal figlio.
@@ -210,7 +233,7 @@ Un messaggio troncato o una lunghezza invalida, **dentro** `io.c`, è `EINVAL`. 
 
 ## 3. Processi
 
-Qui vengono descritti i processi e tutte le chiamate di sistema che vengono effettuate su di essi. 
+Qui vengono descritti i processi e tutte le chiamate di sistema che vengono effettuate su di essi.
 Una volta che viene lanciato `mr_start`:
 
 1. Creazione di tre pipe: `main_to_mapper`, `mapper_to_reducer`, `reducer_to_main`;
@@ -219,7 +242,7 @@ Una volta che viene lanciato `mr_start`:
 4. nel main restano aperti solo il write verso il mapper e il read dal reducer; gli altri sei estremi si chiudono;
 5. invio righe, chiusura del write verso il mapper, raccolta risultati fino a EOF, `qsort`, scrittura file, `waitpid` di mapper e reducer.
 
-I figli eseguono `mapper_process_main` / `reducer_process_main` e poi `_exit`. Non c'è nessuna `exec`. 
+I figli eseguono `mapper_process_main` / `reducer_process_main` e poi `_exit`. Non c'è nessuna `exec`.
 I `fork` avvengono **prima** di qualsiasi `thrd_create` (nel main non ci sono thread C11 del framework, sono presenti solo in mapper e reducer).
 
 Se il `fork` del reducer fallisce, il main chiude le pipe e fa `waitpid` del mapper già avviato. I figli in errore di `dup2`/`close` usano `_exit` dopo aver scritto sul log.
@@ -228,31 +251,35 @@ Se il `fork` del reducer fallisce, il main chiude le pipe e fa `waitpid` del map
 
 Header `<threads.h>`. Niente `pthread_*`. Firma dei thread: `int (*)(void *)`.
 
-**Mapper.** 
-Un thread _reader_ legge da stdin i messaggi riga, li inserisce nella coda (sezione 5) e alla EOF chiama `mr_queue_close`. `N = mapper_threads` worker fanno `pop`, ricostruiscono `mr_file_line_t` locale, invocano la callback del mapper, emettono coppie. La scrittura su stdout è gestita da una `mtx_t`: un messaggio logico non deve mescolarsi con un altro e viene quindi sincronizzato. 
-In `emit` viene fatta la validazione del token (non vuoto, solo `esadecimale`).
-Chiusura stdout: dopo `thrd_join` di reader e worker (passo 2 in figura 1). 
+**Mapper.**
+Un thread _reader_ legge da stdin i messaggi riga, li inserisce nella coda (sezione 5) e alla EOF chiama `mr_queue_close`. `N = mapper_threads` worker fanno `pop`, ricostruiscono `mr_file_line_t` locale, invocano la callback del mapper, emettono coppie. La scrittura su stdout è gestita da una `mtx_t`: un messaggio logico non deve mescolarsi con un altro e viene quindi sincronizzato.
+In `emit` viene fatta la validazione del token (non vuoto, solo caratteri alfanumerici ASCII `A-Z`, `a-z`, `0-9`).
+Chiusura stdout: dopo `thrd_join` di reader e worker (passo 2 in figura 1).
 Id di log: reader = 0, worker = 1…N.
 
-**Reducer.** 
-Allo stesso modo del mapper, un thread _reader_ legge coppie da stdin e le inserisce nei gruppi (sezione 7). 
-I worker **non** partono in parallelo al reader: si fa `thrd_join` del reader (EOF = nessuna coppia ulteriore), poi si invoca la callback del reader su ogni gruppo per token.
+**Reducer.**
+Allo stesso modo del mapper, un thread _reader_ legge coppie da stdin e le inserisce nei gruppi (sezione 7).
+I worker **non** partono in parallelo al reader: si fa `thrd_join` del reader (EOF = nessuna coppia ulteriore), poi si invoca la callback reducer su ogni gruppo per token.
 
 Dopo il join del reader, i gruppi si elaborano a **batch** di al più `reducer_threads`: per ogni batch si creano i worker (un gruppo a testa), poi si fa join e si passa al batch successivo.
 
 **Questo perché.**
-La specifica del progetto impone il reduce solo a gruppi completi: non c’è produzione concorrente di gruppi durante il reduce, quindi non serve una coda produttore-consumatore in questa fase. Il batch usa il parametro `reducer_threads` senza tenere thread idle durante tutta la lettura. 
+La specifica del progetto impone il reduce solo a gruppi completi: non c’è produzione concorrente di gruppi durante il reduce, quindi non serve una coda produttore-consumatore in questa fase. Il batch usa il parametro `reducer_threads` senza tenere thread idle durante tutta la lettura.
 
-Anche qui viene usata una mutex su stdout: più worker dello stesso batch possono fare `emit` insieme ed e' un'eventualita' che va evitata.
+Anche qui viene usata una mutex su stdout: più worker dello stesso batch possono fare `emit` insieme ed è un'eventualità che va evitata.
 
 ## 5. Code interne
 
-Si tratta di una coda interna ai processi, utilizzata solo nel **processo mapper**, per coordinare reader e worker. 
-Non è una pipe e non è condivisa fra processi, in quanto come gia' detto rimane interna.
-Capacità = `queue_size` (numero di elementi, non byte). 
-Buffer circolare di puntatori a righe allocate in heap. 
+Si tratta di una coda interna ai processi, utilizzata solo nel **processo mapper**, per coordinare reader e worker.
+Non è una pipe e non è condivisa fra processi, in quanto come già detto rimane interna.
+Capacità = `queue_size` (numero di elementi, non byte).
+Buffer circolare di puntatori a righe allocate in heap.
 
-Se la coda e' piena, il reader attende `not_full`; se invece e' vuota, il worker attende `not_empty`; `close` sblocca i consumer e i `pop` successivi falliscono (fine lavoro).
+Se la coda è piena, il reader attende `not_full`; se invece è vuota, il worker attende `not_empty`; `close` sblocca i consumer e i `pop` successivi falliscono (fine lavoro).
+
+```{=typst}
+#vuoto()
+```
 
 ```c
 typedef struct {
@@ -264,7 +291,7 @@ typedef struct {
 } mr_queue_t;
 ```
 
-Come tipo di coda e' stata scelta una **bounded queue**: in questo modo il `push` si blocca a coda piena; `queue_size` è il numero massimo di righe in volo nel mapper.
+Come tipo di coda è stata scelta una **bounded queue**: in questo modo il `push` si blocca a coda piena; `queue_size` è il numero massimo di righe in volo nel mapper.
 
 Il tetto esiste perché i worker possono essere più lenti del reader: senza un limite, ogni riga già letta da stdin resterebbe in heap in attesa, e su un file grande la memoria del mapper crescerebbe senza controllo. Con `queue_size` il `push` si ferma a coda piena, il reader smette di svuotare la pipe e il main a monte rallenta: restano in volo al più tante righe quante l’utente ha chiesto, e il parametro ha un effetto concreto sulla memoria e sul ritmo della pipeline.
 
@@ -272,13 +299,36 @@ Il reducer non usa questa coda: l’accumulo è la tabella dei gruppi (sezione 7
 
 ## 6. Protocollo sulle pipe
 
-Tre tipi di messaggio, tutti length-prefixed. `readn` / `writen` ripetono `read`/`write` fino a `n` byte (gestione `EINTR` e trasferimenti parziali). Fine flusso = chiusura pipe, non un messaggio sentinella. Lunghezze in header: `int`; si rifiutano valori negativi e valori oltre i tetti sotto, **prima** della conversione a `size_t`. `token_len == 0` è invalido. Il token sulla pipe è senza `'\0'`; il ricevente alloca `token_len+1` e lo aggiunge. Payload opachi: esattamente `value_len` byte, nienti impliciti.
+Le **tre pipe** della pipeline trasportano dati eterogenei: righe di testo, coppie ⟨token, valore⟩ e risultati finali. Poiché `processed_token` e i risultati del reducer sono sequenze opache — possono contenere byte nulli e non sono stringhe C — scrivere testo libero sul descrittore non basterebbe. Ogni messaggio è quindi **length-prefixed**: è accompagnato da un header con lunghezze esplicite, seguito dai byte effettivi.
 
-**Scelta.** Tetti: `MR_MAX_TOKEN_LEN = 1 MiB`, `MR_MAX_VALUE_LEN = 64 MiB`, `MR_MAX_LINE_LEN = 64 MiB`, `MR_MAX_NAME_LEN = 4096`.
+Una singola `read` o `write` non trasferisce necessariamente un intero messaggio logico. Le funzioni `readn` e `writen` ripetono la syscall fino a ottenere esattamente `n` byte desiderati, gestendo `EINTR` e i trasferimenti parziali. La fine del flusso non è un messaggio speciale: si segnala chiudendo il lato di scrittura della pipe, così il lettore a valle riceve EOF.
 
-**Perché.** La spec chiede limiti ragionevoli documentati. 4 KiB copre path Linux tipici; 1 MiB sul token è già oltre ogni chiave alfanumerica attesa; 64 MiB su riga e valore opaco ammette record binari grandi senza `malloc` da `int` non validato.
+Le **lunghezze negli header** sono di tipo `int`, come richiesto dalla specifica. Prima di convertirle a `size_t` — e prima di usarle per allocare — il framework le valida: si rifiutano i valori negativi e quelli che eccedono i tetti prefissati (paragrafo successivo). Un `token_len` pari a 0 è invalido, ricordando che esso è una sequenza alfanumerica non vuota. Il token viaggia sulla pipe senza il terminatore `'\0'`; il ricevente alloca `token_len + 1` byte e lo aggiunge localmente, così da poterlo trattare come stringa C. I payload opachi occupano esattamente `value_len` byte: nessun terminatore implicito, nessuna interpretazione del contenuto.
 
-Messaggio **riga** (main → mapper):
+```{=typst}
+#vuoto()
+```
+
+Qui elencati i tetti massimi per token e value:
+
+- `MR_MAX_TOKEN_LEN = 1 MiB`
+- `MR_MAX_VALUE_LEN = 64 MiB`
+- `MR_MAX_LINE_LEN = 64 MiB`
+- `MR_MAX_NAME_LEN = 4096`.
+
+Il testo chiede **limiti ragionevoli documentati**, questi valori sono stati ritenuti i più consoni.
+
+```{=typst}
+#vuoto()
+```
+
+Il messaggio **riga** (main → mapper) porta, oltre al contenuto, il **contesto** che la **callback mapper** deve vedere in `mr_file_line_t`: nome del file e numero di riga. L’header è seguito dai byte del nome e da quelli della riga; il `'\n'` di fine riga non sta sul payload.
+
+```{=typst}
+#vuoto()
+```
+
+_Di seguito la struttura che rappresenta header di una linea in entrata nel mapper_
 
 ```c
 typedef struct {
@@ -289,7 +339,17 @@ typedef struct {
 /* poi: file_name_len byte di nome, line_len byte di riga (senza '\n') */
 ```
 
-Messaggio **coppia** (mapper → reducer) e **risultato** (reducer → main): stesso header; il risultato riusa il campo valore per i byte opachi emessi dal reducer.
+```{=typst}
+#vuoto()
+```
+
+Il messaggio **coppia** (mapper → reducer) e il messaggio **risultato** (reducer → main) condividono lo **stesso header**. Nel secondo caso il campo valore contiene i byte opachi emessi dal reducer, non un `processed_token`. Se `value_len` vale 0, non c’è payload e il ricevente passa `NULL`.
+
+```{=typst}
+#vuoto()
+```
+
+_Di seguito la struttura che rappresenta header di una coppia in entrata nel reducer_
 
 ```c
 typedef struct {
@@ -299,11 +359,24 @@ typedef struct {
 /* poi: token_len byte di token, value_len byte opachi */
 ```
 
-`value_len == 0`: nessun payload, puntatore `NULL` lato ricevente.
+```{=typst}
+#vuoto()
+```
+
+```{=typst}
+#vuoto()
+```
 
 ## 7. Raggruppamento per token
 
-Nel reader del reducer, ogni coppia entra in `add_or_create_group`. Un gruppo = un token distinto; la callback reducer parte **una volta** per gruppo, con tutti i valori, solo dopo EOF.
+Nel reader del reducer, ogni coppia entra in `add_or_create_group`.
+Un gruppo corrisponde ad un token distinto; la callback reducer parte **una volta** per gruppo, con tutti i valori, solo dopo EOF.
+
+```{=typst}
+#vuoto()
+```
+
+_Di seguito la struttura che rappresenta il gruppo di un token distinto_
 
 ```c
 typedef struct {
@@ -315,46 +388,106 @@ typedef struct {
 } token_group_t;
 ```
 
-Lookup: scansione lineare con `strcmp` sul token (stringa C già terminata in ricezione). Se esiste, si accoda una **copia** dei byte; se `value_size == 0`, si accoda `NULL`. Se non esiste, `realloc` dell’array di gruppi e nuovo `token_group_t` (`cap` iniziale 4, raddoppio). Dopo EOF: `qsort` dei gruppi per token (`strcmp`), poi i batch della sezione 4. L’ordine sulla pipe verso il main **non** è il contratto di determinismo (i worker di uno stesso batch emettono in concorrenza): l’ordine del file è nella sezione 8.
+```{=typst}
+#vuoto()
+```
 
-**Scelta.** Tabella = array dinamico di `token_group_t` con lookup lineare; ordinamento dei gruppi con `qsort` dopo EOF.
+**Accodamento.**
+**Lookup**: scansione lineare con `strcmp` sul token (stringa C già terminata in ricezione). Se esiste, si accoda una **copia** dei byte; se `value_size == 0`, si accoda `NULL`.
+Se non esiste, si fa `realloc` dell’array di `token_group_t` a `groups_len + 1` (un gruppo in più). I buffer `data`/`sizes` del nuovo gruppo partono da `cap = 1` e raddoppiano quando `count == cap`.
+**Dopo EOF**: `qsort` dei gruppi per token (`strcmp`), poi i batch della sezione 4. L’ordine sulla pipe verso il main **non** è il contratto di determinismo (i worker di uno stesso batch emettono in concorrenza): l’ordine del file viene trattato nella sezione 8.
 
-**Perché.** Il reduce parte solo a input esaurito: non serve una struttura concorrente durante l’inserimento. Il token è una stringa C, quindi `strcmp` è lecito (non sui valori). Le copie heap rispettano il contratto di `emit` (il chiamante può riusare i buffer). L’array è sufficiente per il numero di chiavi distinte atteso su un corpus da laboratorio; l’ordinamento dei gruppi rende deterministica l’assegnazione ai batch.
+```{=typst}
+#vuoto()
+```
+
+**Tabella = array dinamico** di `token_group_t` con lookup lineare; ordinamento dei gruppi con `qsort` dopo EOF.
+Il reduce parte solo a input esaurito: non serve una struttura concorrente durante l’inserimento. Il token è una stringa C, quindi `strcmp` è lecito (non sui valori). Le copie heap rispettano il contratto di `emit` (il chiamante può riusare i buffer). L’array è sufficiente per il numero di chiavi distinte atteso su un corpus da laboratorio; l’ordinamento dei gruppi rende deterministica l’assegnazione ai batch.
 
 ## 8. Formato e ordine dell’output
 
-Il file di output è binario, stesso layout del messaggio risultato (sezione 6): `int` lunghezza token, byte del token (senza `'\0'`), `int` lunghezza risultato, byte opachi del risultato. Non è testo; `cat` non è significativo.
+Il file di output è in formato binario ed ha lo stesso layout del messaggio risultato (sezione 6):
+
+- `int` lunghezza token
+- byte effettivi del token (senza `'\0'`)
+- `int` lunghezza risultato
+- byte opachi del risultato
+
+```{=typst}
+#vuoto()
+```
 
 Il main accumula i record in un array (`record_from_reducer_t`), poi scrive il file.
 
-**Scelta.** I record nel file sono in ordine lessicografico sul token (`strcmp`). Se il reducer fa più `emit` per lo stesso token, l’ordine relativo nel file è l’ordine di quelle chiamate.
-
-**Perché.** La spec chiede output deterministico a parità di input, callback e attributi, e di definire l’ordine se ci sono più risultati per chiave. Il sort nel main è indipendente dallo scheduling dei worker reducer: l’ordine di arrivo sulla pipe non è usato come ordine di file. Più `emit` sullo stesso token restano nell’ordine in cui la callback li ha prodotti (stesso worker, sequenza naturale).
+I **record** nel file sono in **ordine lessicografico** sul token (`strcmp`). Se il reducer fa più `emit` per lo **stesso token**, l’ordine relativo nel file è l’**ordine di quelle chiamate**.
+Il testo chiede un output deterministico a parità di input, callback e attributi, e di definire l’ordine se ci sono più risultati per chiave. Il sort nel main è indipendente dallo scheduling dei worker reducer: token diversi si ordinano per `strcmp`, non per arrivo sulla pipe. Più `emit` sullo stesso token restano nell’ordine in cui la callback li ha prodotti (un gruppo, un worker): `qsort` non è stabile, quindi ogni record porta un indice di inserimento usato come tie-break.
 
 ## 9. File di log
 
-Default: `mr.log` nella directory di lavoro. Apertura `O_APPEND`. Formato riga:
+Il file di log serve per tenere traccia di quelle che sono tutte le fasi significative del programma in esecuzione, molto utile anche per effettuare eventuale debug del codice.
+
+```{=typst}
+#vuoto()
+```
+
+**Valore di default e path**: `mr.log` nella directory di lavoro. Viene aperto in modalità `O_APPEND`.
+
+```{=typst}
+#vuoto()
+```
+
+```{=typst}
+#vuoto()
+```
+
+Formato riga:
+
+```{=typst}
+#vuoto()
+```
 
 ```
 [YYYY-MM-DD HH:MM:SS] [processo] [thread_id] [evento] messaggio
 ```
 
-- `processo`: `main`, `mapper`, `reducer`;
-- `thread_id`: `0` per main e per i reader; `1…N` per i worker;
-- `evento` (principali): `pipe`, `fork`, `thrd_start`, `thrd_end`, `close`, `output`, `stats`, `error`;
-- `stats`: righe inviate al mapper, coppie emesse, token distinti, record finali.
+```{=typst}
+#vuoto()
+```
 
-Esempio: `[2026-06-21 14:30:01] [main] [0] [pipe] created 3 pipes`
+- _processo_: `main`, `mapper`, `reducer`;
+- _thread id_: `0` per main e per i reader; `1…N` per i worker;
+- _evento_ (principali): `pipe`, `fork`, `thrd_start`, `thrd_end`, `close`, `output`, `stats`, `error`;
+- _stats_: righe inviate al mapper, coppie emesse, token distinti, record finali.
 
-Eventi minimi della spec coperti: creazione pipe e processi, avvio/fine thread, apertura/chiusura file di input e output, i quattro contatori, errori.
+```{=typst}
+#vuoto()
+```
 
-**Scelta.** Mutua esclusione inter-processo con semaforo POSIX named: `sem_open("/<pid>", …)` nel main all’apertura del log; ogni `mr_log_write` fa `sem_wait` / `writen` / `sem_post`. Il nome usa il PID del processo che crea il log, così istanze concorrenti di programmi diversi non condividono lo stesso semaforo.
+Esempio:
+`[2026-06-21 14:30:01] [main] [0] [pipe] created 3 pipes`
 
-**Perché.** Tre processi (e più thread nel mapper/reducer) scrivono lo stesso file: senza lock le righe si mescolano. Il semaforo named è ereditabile dopo `fork` (stesso mapping) e copre sia thread sia processi, come previsto dalla spec. `writen` evita righe spezzate da `write` parziali.
+```{=typst}
+#vuoto()
+```
+
+```{=typst}
+#vuoto()
+```
+
+Vengono **coperti tutti gli eventi** minimi richiesti: creazione pipe e processi, avvio/fine thread, apertura/chiusura file di input e output, i quattro contatori, errori vari.
+
+Viene effettuata una **mutua esclusione inter/intra-processo** con **semaforo POSIX named** per evitare race condition di accesso al file:
+
+1. `sem_open()`: crea o apre un semaforo nel main all’apertura del log
+2. ogni `mr_log_write` fa: `sem_wait` / `writen` / `sem_post`. Il nome usa il PID del processo che crea il log, così si evita che le istanze concorrenti di programmi diversi condividano lo stesso semaforo.
+
+**Tre processi** (e più thread nel mapper/reducer) scrivono lo **stesso file**: senza lock le righe si mescolano. Il semaforo named è ereditabile dopo `fork` (stesso mapping) e copre sia thread sia processi, come previsto dalla spec. `writen` evita righe spezzate da `write` parziali.
 
 ## 10. Test
 
-`make test` compila `libmr.a` se serve, costruisce i sei eseguibili in `tests/` e li lancia in sequenza. Al primo fallimento la batteria si ferma (exit diverso da 0). I test di integrazione usano mapper e reducer propri (conteggio, byte opachi, mapper che non emette): il framework non incorpora logica di word-count.
+`make test` compila `libmr.a` se serve, costruisce i sei eseguibili in `tests/` e li lancia in sequenza. Al primo fallimento la batteria si ferma (exit diverso da 0). Sono test automatici di unità e di integrazione: mapper e reducer arrivano dai test, non dalla libreria.
+
+Casi del testo coperti oggi: file vuoto, riga vuota e ultima riga senza `'\n'` (`tests/input`); valori opachi con byte nullo interno (`tests/io` sulla coppia, `tests/integration` end-to-end); due `mr_start` identici con output byte-per-byte uguale; path inesistente e secondo `mr_start` sullo stesso handle (`EINVAL`).
 
 ```{=typst}
 #block(breakable: false, {
@@ -374,21 +507,19 @@ Eventi minimi della spec coperti: creazione pipe e processi, avvio/fine thread, 
     ),
     table.cell(rowspan: 3, align: left + horizon)[I/O e log],
     [`tests/log`],
-    [formato riga; default `mr.log`; scritture concorrenti da processi distinti col semaforo],
+    [formato riga; default `mr.log`; 50+50 scritture padre/figlio dopo `fork`],
     [`tests/input`],
-    [file singolo; directory (ordine lessicografico); file vuoto],
+    [file con riga vuota e ultima senza `'\n'`; directory in ordine lessicografico; file vuoto],
     [`tests/io`],
-    [`readn`/`writen`; messaggi riga, coppia, risultato; EOF; header/payload troncati; `mr_validate_len`],
+    [`readn`/`writen`; riga/coppia/risultato; coppia vuota o con byte `0`; EOF e header/token troncati su `mr_read_pair`; `mr_validate_len`],
     table.cell(rowspan: 2, align: left + horizon)[Stadi isolati],
     [`tests/mapper`],
-    [processo mapper in un figlio: una riga in ingresso, coppia attesa su stdout],
+    [figlio con `dup2`: una riga `hello` → coppia ⟨hello, 42⟩],
     [`tests/reducer`],
-    [processo reducer: coppie già serializzate, raggruppamento, un `emit` per token],
+    [tre coppie sullo stesso token → un solo `emit` con i tre valori],
     [Integrazione],
     [`tests/integration`],
-    [`mr_create`/`mr_start`/`mr_destroy`: word-count, directory, determinismo, valori opachi, mapper silenzioso, coda piccola con più thread, input inesistente e one-shot],
+    [word-count; directory; determinismo; byte opachi; mapper silenzioso; coda 2 e 4+4 thread; input inesistente e one-shot],
   )
 })
 ```
-
-Dettaglio dei comandi: README.

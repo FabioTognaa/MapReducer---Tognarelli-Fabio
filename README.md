@@ -38,9 +38,9 @@ After unpacking the archive (or cloning the repository) into the project directo
 make
 ```
 
-Compilation produces `libmr.a` and the `examples/minimal` executable. There is no system installation step (`make install`, prefixes, pkg-config): to use the framework it is enough to include `include/mr.h` and link `libmr.a`, as described below.
+Compilation produces `libmr.a` and the two example executables `examples/minimal` and `examples/word-count`. There is no system installation step (`make install`, prefixes, pkg-config): to use the framework it is enough to include `include/mr.h` and link `libmr.a`, as described below.
 
-To remove objects, the library, the example, and test binaries:
+To remove objects, the library, the examples, and test binaries:
 
 ```
 make clean
@@ -69,8 +69,10 @@ make clean
 │   ├── queue.c				 	internal queue used by mapper and reducer processes
 │   ├── mapper_proc.c		 	mapper process
 │   └── reducer_proc.c		 	reducer process
-├── examples/				 example program
-│   └── minimal.c            	example of the public API via word-count
+├── examples/				 example programs
+│   ├── minimal.c            	end-to-end run with mapper/reducer that emit nothing
+│   ├── word-count.c         	word-count over alphanumeric tokens
+│   └── files/               	sample input (and optional output) for the examples
 └── tests/                   automated tests (internal structures and pipeline)
     ├── log.c
     ├── input.c
@@ -84,7 +86,7 @@ make clean
 
 ### Makefile and tests on internal structures
 
-The Makefile exposes three targets. `make` (equivalent to `make all`) compiles the objects in `src/`, archives the static library `libmr.a`, and builds `examples/minimal`. `make test` rebuilds the library if needed, compiles each executable in `tests/`, and runs them in sequence. `make clean` removes the library, objects, example, and test binaries.
+The Makefile exposes three targets. `make` (equivalent to `make all`) compiles the objects in `src/`, archives the static library `libmr.a`, and builds `examples/minimal` and `examples/word-count`. `make test` rebuilds the library if needed, compiles each executable in `tests/`, and runs them in sequence. `make clean` removes the library, objects, both examples, and test binaries.
 
 `make test` is the intended way to check internal structures and the full pipeline. Each executable covers one module; if a test fails, the suite stops and the process exits with a non-zero status.
 
@@ -96,7 +98,16 @@ A single test can also be run after `make test` (or after compiling that binary)
 
 `libmr` is not a command-line program with a fixed argv: it is a library. The caller configures attributes, registers mapper and reducer, and starts processing with `mr_start`, passing the input path (regular file or directory) and the output file path. `mr_start` is blocking: it returns only when processing has finished or on error. Public functions return `0` on success and `-1` on error, setting `errno` where appropriate.
 
-After `make`, the compiled example is `examples/minimal`. In the current version it checks API initialisation and constraints (`mr_attr_init`, setters, `mr_create`, `mr_destroy`) and does not call `mr_start` on a file. A complete use, of the same kind as in `tests/integration.c`, has the following shape.
+After `make`, the compiled examples are `examples/minimal` and `examples/word-count`. Both take `<input> <output>` and call `mr_start`. `minimal` runs the full pipeline with callbacks that emit nothing (empty output file). `word-count` counts alphanumeric tokens: the mapper emits the integer `1` for each token; the reducer emits `values_count` as an `int` (valid because every emitted value is `1`).
+
+Usage:
+
+```
+./examples/minimal examples/files/input.txt /tmp/empty.mro
+./examples/word-count examples/files/input.txt /tmp/out.mro
+```
+
+A complete program, of the same kind as `examples/word-count.c` and `tests/integration.c`, has the following shape.
 
 Mapper and reducer are defined. In occurrence counting the mapper splits the line into alphanumeric tokens and for each one emits the integer value `1`; the reducer receives all values for a token and emits the total as an `int`:
 
@@ -250,9 +261,9 @@ Dopo aver scompattato l’archivio (o clonato il repository) nella directory del
 make
 ```
 
-La compilazione produce `libmr.a` e l’eseguibile `examples/minimal`. Non sono previsti passi di installazione di sistema (`make install`, prefissi, pkg-config): per usare il framework basta includere `include/mr.h` e collegare `libmr.a`, come descritto più sotto.
+La compilazione produce `libmr.a` e i due eseguibili `examples/minimal` e `examples/word-count`. Non sono previsti passi di installazione di sistema (`make install`, prefissi, pkg-config): per usare il framework basta includere `include/mr.h` e collegare `libmr.a`, come descritto più sotto.
 
-Per rimuovere oggetti, libreria, esempio e binari di test:
+Per rimuovere oggetti, libreria, esempi e binari di test:
 
 ```
 make clean
@@ -281,8 +292,10 @@ make clean
 │   ├── queue.c				 	gestione della coda interna ai processi mapper e reducer
 │   ├── mapper_proc.c		 	processo mapper
 │   └── reducer_proc.c		 	processo reducer
-├── examples/				 programma di esempio
-│   └── minimal.c            	esempio di uso dell’API pubblica tramite word-count
+├── examples/				 programmi di esempio
+│   ├── minimal.c            	pipeline end-to-end con mapper/reducer che non emettono nulla
+│   ├── word-count.c         	conteggio delle occorrenze dei token alfanumerici
+│   └── files/               	input di esempio (e output opzionale) per gli esempi
 └── tests/                   test automatici (strutture interne e pipeline)
     ├── log.c
     ├── input.c
@@ -296,7 +309,7 @@ make clean
 
 ### Makefile e test sulle strutture interne
 
-Il Makefile espone tre target. `make` (equivalente a `make all`) compila gli oggetti in `src/`, archivia la libreria statica `libmr.a` e costruisce `examples/minimal`. `make test` ricostruisce la libreria se necessario, compila ogni eseguibile in `tests/` e li lancia in sequenza. `make clean` elimina libreria, oggetti, esempio e binari di test.
+Il Makefile espone tre target. `make` (equivalente a `make all`) compila gli oggetti in `src/`, archivia la libreria statica `libmr.a` e costruisce `examples/minimal` e `examples/word-count`. `make test` ricostruisce la libreria se necessario, compila ogni eseguibile in `tests/` e li lancia in sequenza. `make clean` elimina libreria, oggetti, entrambi gli esempi e binari di test.
 
 `make test` è il modo previsto per verificare le strutture interne e la pipeline completa. Ogni eseguibile copre un modulo; se un test fallisce, la batteria si ferma e il processo esce con codice diverso da zero.
 
@@ -308,7 +321,16 @@ Si può anche lanciare un singolo test dopo `make test` (o dopo aver compilato q
 
 `libmr` non è un programma a riga di comando con argv fissi: è una libreria. Il chiamante configura gli attributi, registra mapper e reducer, e avvia l’elaborazione con `mr_start`, passando il path di input (file regolare o directory) e il path del file di output. `mr_start` è bloccante: torna solo a elaborazione conclusa o in errore. Le funzioni pubbliche restituiscono `0` in successo e `-1` in errore, impostando `errno` ove appropriato.
 
-Dopo `make`, l’esempio compilato è `examples/minimal`. Nella versione attuale verifica inizializzazione e vincoli dell’API (`mr_attr_init`, setter, `mr_create`, `mr_destroy`) e non chiama `mr_start` su un file. Un uso completo, dello stesso tipo di quello in `tests/integration.c`, ha questa forma.
+Dopo `make`, gli esempi compilati sono `examples/minimal` e `examples/word-count`. Entrambi prendono `<input> <output>` e chiamano `mr_start`. `minimal` esegue la pipeline con callback che non emettono nulla (file di output vuoto). `word-count` conta i token alfanumerici: il mapper emette l’intero `1` per ogni token; il reducer emette `values_count` come `int` (corretto perché ogni valore emesso è `1`).
+
+Uso:
+
+```
+./examples/minimal examples/files/input.txt /tmp/empty.mro
+./examples/word-count examples/files/input.txt /tmp/out.mro
+```
+
+Un programma completo, dello stesso tipo di `examples/word-count.c` e `tests/integration.c`, ha questa forma.
 
 Si definiscono mapper e reducer. Nel conteggio delle occorrenze il mapper spezza la riga in token alfanumerici e per ciascuno emette il valore intero `1`; il reducer riceve tutti i valori di un token e emette il totale come `int`:
 

@@ -10,6 +10,7 @@ typedef struct {
 	void *res;
 	size_t res_len;
 	size_t token_len;
+	size_t seq;
 } record_from_reducer_t;
 
 // Definizione reale dell'handle opaco mr_t.

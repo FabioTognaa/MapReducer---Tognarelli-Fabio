@@ -244,11 +244,11 @@ int mr_read_line(int fd, mr_file_line_t *out){
         return ERROR_SYSTEM;
     }
 
-    if(header.line_len < 0){
-        errno = EINVAL;
+    if(mr_validate_len(header.file_name_len, MR_MAX_NAME_LEN) != 0 || header.file_name_len == 0){
+        errno = EINVAL; 
         return ERROR_SYSTEM;
     }
-    if(mr_validate_len(header.file_name_len, MR_MAX_NAME_LEN) != 0 || header.file_name_len == 0){
+    if(mr_validate_len(header.line_len, MR_MAX_LINE_LEN) != 0){
         errno = EINVAL; 
         return ERROR_SYSTEM;
     }
@@ -274,16 +274,14 @@ int mr_read_line(int fd, mr_file_line_t *out){
     }
     fbuf[file_name_len] = '\0';
 
-    char *lbuf = NULL;
+    /* riga vuota: line non NULL, line_len == 0 */
+    char *lbuf = malloc(line_len + 1);
+    if(!lbuf){
+        errno = ENOMEM;
+        free(fbuf);
+        return ERROR_SYSTEM;
+    }
     if(line_len > 0){
-        
-        lbuf = malloc(line_len + 1);
-        if(!lbuf){
-            errno = ENOMEM;
-            free(fbuf);
-            return ERROR_SYSTEM;
-        }
-
         ssize_t nl = readn(fd, lbuf, line_len);
         if(nl < 0){
             free(fbuf);
@@ -296,8 +294,8 @@ int mr_read_line(int fd, mr_file_line_t *out){
             errno = EINVAL;
             return ERROR_SYSTEM;
         }
-        lbuf[line_len] = '\0';
     }
+    lbuf[line_len] = '\0';
 
     out->file_name = fbuf;
     out->file_name_len = file_name_len;
@@ -312,12 +310,12 @@ int mr_read_line(int fd, mr_file_line_t *out){
 //SCRIVE LA RIGA SERIALIZZATA SULLA PIPE MAIN -> MAPPER
 int mr_write_line(int fd, size_t file_name_len, char* file_name, unsigned long line_number, char* line, size_t line_len ){
 
-    //validazione delle lunghezze
-    if(mr_validate_len(file_name_len, MR_MAX_NAME_LEN) != 0 || file_name_len == 0){
+    //validazione delle lunghezze (size_t prima del cast a int)
+    if(file_name_len == 0 || file_name_len > MR_MAX_NAME_LEN){
         errno = EINVAL;
         return ERROR_SYSTEM;
     }
-    if(mr_validate_len(line_len, MR_MAX_LINE_LEN) != 0 || line_len < 0){
+    if(line_len > MR_MAX_LINE_LEN){
         errno = EINVAL;
         return ERROR_SYSTEM;
     }

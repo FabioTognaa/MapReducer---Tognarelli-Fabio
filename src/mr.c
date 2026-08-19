@@ -95,10 +95,17 @@ static int mr_fail_inval(void)
 
 //ORDINA LESSICOGRAFICAMENTE GLI ELEMENTI NELL'ARRAY DI RECORD
 static int cmp_records(const void *a, const void *b){
-	record_from_reducer_t *ra = a;
-	record_from_reducer_t *rb = b;
-	
-	return strcmp(ra->token, rb->token);
+	const record_from_reducer_t *ra = a;
+	const record_from_reducer_t *rb = b;
+	int cmp = strcmp(ra->token, rb->token);
+
+	if (cmp != 0)
+		return cmp;
+	if (ra->seq < rb->seq)
+		return -1;
+	if (ra->seq > rb->seq)
+		return 1;
+	return 0;
 }
 //INIZIALIZZO GLI ATTRIBUTI DEL MAPPER REDUCER
 int mr_attr_init(mr_attr_t *attr)
@@ -295,9 +302,6 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		errno = saved;
 		return -1;
 	}
-	
-
-	mr_log_write(&mr->log, "main", 0, "fork", "mapper process created");
 
 	//dentro al proc. mapper
 	if(!pid_mapper){
@@ -322,6 +326,8 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		_exit(mapper_process_main(mr) != 0);
 	}
 
+	mr_log_write(&mr->log, "main", 0, "fork", "mapper process created");
+
 	//fork del reducer con cleanup parziale del mapper
 	pid_reducer = fork();
 	if (pid_reducer == -1) {
@@ -337,10 +343,6 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 		errno = saved;
 		return -1;
 	}
-
-	
-
-	mr_log_write(&mr->log, "main", 0, "fork", "reducer process created");
 
 	//dentro al proc. reducer
 	if(!pid_reducer){
@@ -364,7 +366,10 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 
 		_exit(reducer_process_main(mr) != 0);
 	}
-	else{	//processo main
+
+	mr_log_write(&mr->log, "main", 0, "fork", "reducer process created");
+
+	{	//processo main
 
 		//aggiorno i valori dello starte value x gestione errori
 		st.pid_mapper = pid_mapper;
@@ -474,7 +479,8 @@ int mr_start(mr_t mr, const char *input_path, const char *output_path){
 			record[dim].token = token;  
 			record[dim].res = result;  
 			record[dim].res_len = result_size;  
-			record[dim].token_len = strlen(token);  
+			record[dim].token_len = strlen(token);
+			record[dim].seq = dim;
 			dim++;
 
 			//aggiorno st

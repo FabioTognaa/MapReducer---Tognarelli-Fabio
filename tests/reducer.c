@@ -53,7 +53,7 @@ static int test_reducer_groups_values_by_token(const char* token, const mr_value
 	//lista di valori associati al token
 	int buf[3];
 	for(size_t i = 0; i < values_count; i++){
-		if(*(const int*)values[i].data != i+1 || values[i].size != sizeof(int))
+		if(*(const int*)values[i].data != (int)i+1 || values[i].size != sizeof(int))
 			return -1;
 		buf[i] = *(const int *)values[i].data;
 	}

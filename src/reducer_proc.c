@@ -2,6 +2,14 @@
 #include "reducer_proc.h"
 #include "mr_internal.h"
 
+//SETTA L'ERRORE IN MODO SINCRONIZZATO SENZA RACE
+static void set_error(reducer_ctx_t *ctx)
+{
+    mtx_lock(&ctx->out_mtx);
+    ctx->error = 1;
+    mtx_unlock(&ctx->out_mtx);
+}
+
 //ORDINAMENTO ALFANUMERICO DEI TOKEN NELLA LISTA DA PROCESSARE
 static int cmp_tkn(const void *a, const void *b){
     const token_group_t *ta = a;
@@ -202,7 +210,7 @@ static int reader_mapper(void *args){
         //read fallito
         if(nr == ERROR_SYSTEM){
             mr_log_write(ctx->log, "reducer", 0, "error", "lettura coppia in entrata reducer fallita");
-            ctx->error = 1;
+            set_error(ctx);
             return -1;
         }
 
@@ -220,7 +228,7 @@ static int reader_mapper(void *args){
             free(in_token);
             free(in_value);
             mr_log_write(ctx->log, "reducer", 0, "error", "aggiunta della coppia al raggruppamento fallita");
-            ctx->error = 1;
+            set_error(ctx);
             return -1;
         }
 
@@ -243,7 +251,7 @@ static int reducer_emit_result(const char *token, const void *result, size_t res
 
     //lock del mutex
     if(mtx_lock(&ctx->out_mtx) == thrd_error){
-        ctx->error = 1;
+        set_error(ctx);
         mr_log_write(ctx->log, "reducer", 0, "error", "mtx_lock fallita in scrittura reducer -> main");
         return -1;
     }
@@ -251,7 +259,7 @@ static int reducer_emit_result(const char *token, const void *result, size_t res
     //scrivo in output ogni coppia
     int rc;
     if((rc = mr_write_result(STDOUT_FILENO, (char*)token, (void*)result, result_size, strlen(token))) == ERROR_SYSTEM){
-        ctx->error = 1;
+        ctx->error = 1; /* gia' sotto out_mtx: non chiamare set_error */
         mtx_unlock(&ctx->out_mtx);
         mr_log_write(ctx->log, "reducer", 0, "error", "mr_write_result reducer -> main");
         
@@ -295,7 +303,7 @@ static int reducer_worker_main(void *arg){
 
     //chiamo reducer sull'array di valori estrapolati dal token_group
     if(ctx->reducer(g->token, values, g->count,reducer_emit_result, ctx, ctx->user_arg) == -1){
-        ctx->error = 1;     //un worker ha avuto un errore
+        set_error(ctx);
     }
 
     //cleanup finale
@@ -335,7 +343,7 @@ int reducer_process_main(mr_t mr){
     int res;
     if(thrd_create(&reader, reader_mapper, &ctx) != thrd_success){
         mr_log_write(ctx.log, "reducer", 0, "error", "creazione thrd reader fallita");
-        ctx.error = 1;
+        set_error(&ctx);
         mtx_destroy(&ctx.out_mtx);
         return -1;
     }
@@ -346,7 +354,7 @@ int reducer_process_main(mr_t mr){
     mr_log_write(ctx.log, "reducer", 0, "thrd_end", "reader thread joined");
     if(reader_fail){
         close(STDOUT_FILENO);
-        ctx.error = 1;
+        set_error(&ctx);
         mtx_destroy(&ctx.out_mtx);
         return -1;
     }
@@ -379,7 +387,7 @@ int reducer_process_main(mr_t mr){
             works[i].ctx = &ctx;
             works[i].g = &ctx.groups[start + i];
             if(thrd_create(&workers[i], reducer_worker_main, &works[i]) != thrd_success){
-                ctx.error = 1;
+                set_error(&ctx);
                 //salvo il log
                 mr_log_write(ctx.log, "reducer", 0, "error", "creazione thrd worker fallita");
                 //faccio il join dei thrd che sono stati creati
@@ -409,7 +417,7 @@ int reducer_process_main(mr_t mr){
         //join degli worker
         for(size_t j = 0; j < batch; j++){
             if(thrd_join(workers[j], &res) != thrd_success || res != 0)
-                ctx.error = 1;
+                set_error(&ctx);
             mr_log_write(ctx.log, "reducer", j + 1, "thrd_end", "worker thread joined");
         }
 

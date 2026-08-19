@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
+#include <limits.h>
 #include "io.h"
 #include "mr.h"
 
@@ -141,13 +142,21 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
         //leggi la dir
         char** names = NULL;
         size_t count = 0, cap = 0;
-        char full_path[1024];
+        char full_path[PATH_MAX];
         while((file = readdir(dir)) != NULL){
             //evita . e ..
             if(strcmp(file->d_name, ".") == 0 || strcmp(file->d_name, "..") == 0) continue;
             
-            //evita file indesiderati
-            snprintf(full_path, sizeof(full_path), "%s/%s", input_path, file->d_name);
+            //evita file indesiderati con path invalidi o troppo lunghi
+            int npath = snprintf(full_path, sizeof(full_path), "%s/%s", input_path, file->d_name);
+            if(npath < 0 || (size_t)npath >= sizeof(full_path)){
+                for (size_t k = 0; k < count; k++)
+                    free(names[k]);
+                free(names);
+                closedir(dir);
+                errno = ENAMETOOLONG;
+                return -1;
+            }
             if (check_path(full_path) != IS_FILE)
                 continue;
 
@@ -187,7 +196,17 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
         //lettura file per file 
         size_t total_lines = 0;
         for (size_t i = 0; i < count; i++) {
-            snprintf(full_path, sizeof(full_path), "%s/%s", input_path, names[i]);
+            /* npath = lunghezza che la stringa avrebbe senza tetto sul buffer.
+             * Se npath >= PATH_MAX il path in full_path e' troncato: non aprirlo. */
+            int npath = snprintf(full_path, sizeof(full_path), "%s/%s", input_path, names[i]);
+            if(npath < 0 || (size_t)npath >= sizeof(full_path)){
+                /* names[0..i-1] gia' free dopo send_one_file: libero solo da i in poi */
+                for(size_t j = i; j < count; j++)
+                    free(names[j]);
+                free(names);
+                errno = ENAMETOOLONG;
+                return -1;
+            }
             int tmp;
             if ((tmp = send_one_file(full_path, mapper_write_fd)) == -1) {
                 for(size_t j = i; j < count; j++){

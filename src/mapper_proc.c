@@ -3,6 +3,12 @@
 #include "log.h"
 
 
+//SETTA L'ERRORE IN MODO SINCRONIZZATO SENZA RACE
+static void set_error(mapper_ctx_t *ctx){
+    mtx_lock(&ctx->out_mtx);
+    ctx->error = 1;
+    mtx_unlock(&ctx->out_mtx);
+}
 
 
 //CONTROLLO ALFANUMERICO SUL NOME DI UN TOKEN
@@ -36,22 +42,22 @@ static int mapper_emit_pair(const char* token, const void* value, size_t value_s
 
     //valido il token
     if(check_tkn(token, ctx->log) == -1){
-        ctx->error = 1;
+        set_error(ctx);
         return -1;
     }
 
     //prendo il mutex
     if(mtx_lock(&ctx->out_mtx) != thrd_success){
         mr_log_write(ctx->log, "mapper", 0, "error", "acquisizione mtx del mapper in scrittura su reducer fallita");
-        ctx->error = 1;
+        set_error(ctx);
         return -1;
     }
     
 
     //scrive in stdout le informazioni di una coppia
     if((mr_write_pair(STDOUT_FILENO, (char*)token, (void*)value, value_size, strlen(token) )) == ERROR_SYSTEM){
+        ctx->error = 1; /* gia' sotto out_mtx: non chiamare set_error */
         mtx_unlock(&ctx->out_mtx);
-        ctx->error = 1;
         return -1;
     }
 
@@ -79,7 +85,7 @@ static int mapper_worker_main(void *arg){
 
         //chiama il mapper dal ctx
         if(ctx->mapper(item, mapper_emit_pair, ctx, ctx->user_arg) == -1){
-            ctx->error = 1; 
+            set_error(ctx);
         }
     
         
@@ -217,7 +223,7 @@ int mapper_process_main(mr_t mr){
     int res;
     //prima del reader
     if(thrd_join(reader, &res) != thrd_success || res == -1){
-        ctx.error = 1;
+        set_error(&ctx);
         mr_queue_close(&ctx.queue);
     }
     mr_log_write(ctx.log, "mapper", 0, "thrd_end", "reader thread joined");
@@ -225,7 +231,7 @@ int mapper_process_main(mr_t mr){
     //poi degli workers
     for(size_t i = 0; i < ctx.n_workers; i++){
         if(thrd_join(workers[i], &res) != thrd_success || res == -1)
-            ctx.error = 1;
+            set_error(&ctx);
         mr_log_write(ctx.log, "mapper", i + 1, "thrd_end", "worker thread joined");
     }
     mr_queue_destroy(&ctx.queue);
