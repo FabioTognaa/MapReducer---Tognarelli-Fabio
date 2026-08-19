@@ -41,7 +41,7 @@ int check_path(const char *path){
 //ESTRAE DAL PATH IL NOME DI UN FILE/DIR
 static char * str_extract(const char *path){
     // Cerca l'ultimo '/' nel path
-    char *file_name = strrchr(path, '/');
+    char *file_name = strrchr((char*)path, '/');
     
     if (file_name != NULL)
         return file_name + 1; 
@@ -200,7 +200,7 @@ int mr_send_input(const char *input_path, int mapper_write_fd, size_t *out_lines
              * Se npath >= PATH_MAX il path in full_path e' troncato: non aprirlo. */
             int npath = snprintf(full_path, sizeof(full_path), "%s/%s", input_path, names[i]);
             if(npath < 0 || (size_t)npath >= sizeof(full_path)){
-                /* names[0..i-1] gia' free dopo send_one_file: libero solo da i in poi */
+                //names[0..i-1] gia' free dopo send_one_file: libero solo da i in poi
                 for(size_t j = i; j < count; j++)
                     free(names[j]);
                 free(names);

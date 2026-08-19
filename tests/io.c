@@ -6,43 +6,6 @@
 #include <errno.h>
 #include "io.h"
 
-/*
- * TODO: test mancanti in tests/io.c
- *
- * readn / writen
- * - test_readn_partial: forzare read() parziali (pipe + scrittura a chunk) e verificare
- *   che readn() legga tutti i byte richiesti in più chiamate
- * - test_writen_partial: stesso schema per writen() con write() parziali
- *
- * mr_write_line / mr_read_line
- * - test_line_empty: riga con line_len == 0 (contenuto assente, file_name valido)
- * - test_line_eof: pipe chiusa senza messaggi -> mr_read_line() == EOF_REACHED
- * - test_line_truncated_header: header mr_line_header_t incompleto -> -1, errno EINVAL
- * - test_line_truncated_payload: header ok ma file_name o line troncati -> -1, errno EINVAL
- * - test_write_line_invalid: file_name_len == 0, line_len > MR_MAX_LINE_LEN -> -1, errno EINVAL
- * - test_line_binary: line con byte nulli interni (memcmp su line_len, non strcmp)
- *
- * mr_write_pair / mr_read_pair
- * - test_pair_truncated_value: header ok, token ok, value troncato -> -1, errno EINVAL
- * - test_read_pair_invalid_len: header con token_len o value_len negativi -> -1, errno EINVAL
- * - test_read_pair_len_overflow: token_len > MR_MAX_TOKEN_LEN o value_len > MR_MAX_VALUE_LEN
- * - test_write_pair_len_overflow: stessi limiti in scrittura -> -1, errno EINVAL
- *
- * mr_write_result / mr_read_result
- * - test_result_empty: result_size == 0, value == NULL
- * - test_result_binary: risultato con byte nulli interni
- * - test_result_eof: pipe chiusa -> mr_read_result() == EOF_REACHED
- * - test_result_truncated_header: header incompleto -> -1, errno EINVAL
- * - test_result_truncated_payload: token o risultato troncati -> -1, errno EINVAL
- *
- * EOF (test_eof attuale copre solo mr_read_pair)
- * - test_eof_line: mr_read_line() su pipe vuota chiusa
- * - test_eof_result: mr_read_result() su pipe vuota chiusa
- *
- * fix compilazione
- * - test_truncated_payload: header come due int locali + token troncato
- */
-
 //testa il funzionamento di readn e writen
 static int test_readn_writen(void){
 
@@ -80,8 +43,6 @@ static int test_readn_writen(void){
     return 0;
 }
 
-// TODO: test_readn_partial / test_writen_partial (vedi blocco TODO in cima al file)
-static int test_readn_writen_partial(){}
 //testa il funzionamento di mr_read_line e mr_write_line
 static int test_line(void){
 
@@ -89,6 +50,7 @@ static int test_line(void){
     char buf[16];
     mr_file_line_t l = {0};  //riga vuota
 
+    //pipe
     if(pipe(p) != 0)
         return -1;
 
@@ -131,10 +93,56 @@ static int test_line(void){
     //cleanup memoria
     free((void *)l.file_name);
     free((void *)l.line);
+
+
+    //------------------------------------------------------
+    //STESSO TEST CON RIGA VUOTA
+    //pipe
+    if(pipe(p) != 0)
+        return -1;
+
+    //scrivo una riga pre-impostata sulla pipe
+    if(mr_write_line(p[1], 4, "test", 1, "", 0) != 0){
+        close(p[0]);
+        close(p[1]);
+        return -1;
+    } 
+    close(p[1]);
+
+    //leggo dalla pipe la riga
+    if(mr_read_line(p[0], &l) != 0){
+        close(p[0]);
+        return -1;
+    }
+
+    //controllo che infondo restituisca EOF
+    if(readn(p[0], buf, 1) != 0){
+        close(p[0]);    
+        return -1;
+    }
+    close(p[0]);
+
+    
+    //se le lunghezze sono corrette
+    if(l.file_name_len != 4 || l.line_number != 1 || l.line_len != 0){
+        free((void *)l.file_name);
+        free((void *)l.line);
+        return -1;
+    }
+    
+    //se la riga e il nome del file sono corretti
+    if((memcmp(l.file_name, "test", 4) != 0)){
+        free((void *)l.file_name);
+        free((void *)l.line);
+        return -1;
+    }
+
+    //cleanup memoria
+    free((void *)l.file_name);
+    free((void *)l.line);
+
     return 0;
 }
-
-// TODO: test_line_empty, test_line_eof, test_line_truncated_*, test_write_line_invalid, test_line_binary
 
 static int test_pair(void){
 
@@ -239,8 +247,6 @@ static int test_pair(void){
     return 0;
 }
 
-// TODO: test_pair_truncated_value, test_read_pair_invalid_len, test_read_pair_len_overflow
-
 //test per mr_write/read_result su una coppia predefinita <hello, 42>
 static int test_result(void){
 
@@ -281,10 +287,43 @@ static int test_result(void){
 
     free(token);
     free(value);
+    token = NULL;
+    value = NULL;
+    value_size = 0;
+
+    //--------------------------------
+    //TEST CON UN RISULTATO NULLO
+
+    //pipe
+    if(pipe(p) != 0)
+        return -1;
+
+    // passo token con valore nullo
+    if(mr_write_result(p[1], "hello", NULL, 0, strlen("hello")) != 0){
+        close(p[0]);
+        close(p[1]);
+        return -1;
+    }
+    close(p[1]);
+
+    //lettura reducer -> main
+    if(mr_read_result(p[0], &token, &value, &value_size) != 0){
+        close(p[0]);
+        return -1;
+    }
+    close(p[0]);
+
+    //controllo correttezza del messaggio su pipe
+    if((strcmp(token, "hello") != 0) || (value_size != 0) || (value != NULL)){
+        free(token);
+        free(value);
+        return -1;
+    }
+
+    free(token);
+    free(value);
     return 0;
 }
-
-// TODO: test_result_empty, test_result_binary, test_result_eof, test_result_truncated_*
 
 //test ERRORI
 //eof raggiunto
@@ -293,6 +332,8 @@ static int test_eof(void){
     char *token = NULL;
     void *value = NULL;
     size_t value_size = 0;
+    mr_file_line_t file_line = {0};
+
     
     if(pipe(p) != 0)
         return -1;
@@ -300,8 +341,19 @@ static int test_eof(void){
     //chiudo in output simulando eof raggiunto
     close(p[1]);
 
-    //provo comunque a leggere
+    //provo a leggere la linea
+    if(mr_read_line(p[0], &file_line) != EOF_REACHED){
+        close(p[0]);
+        return -1;
+    }
+    //provo a leggere la coppia
     if(mr_read_pair(p[0], &token, &value, &value_size) != EOF_REACHED){
+        close(p[0]);
+        return -1;
+    }
+
+    //provo a leggere il risultato
+    if(mr_read_result(p[0], &token, &value, &value_size) != EOF_REACHED){
         close(p[0]);
         return -1;
     }
@@ -309,8 +361,6 @@ static int test_eof(void){
     close(p[0]);
     return 0;
 }
-
-// TODO: test_eof_line (mr_read_line), test_eof_result (mr_read_result)
 
 //controlla se l'header e' stato letto solo parzialmente e chiuso a meta'
 static int test_truncated_header(void){
@@ -411,8 +461,6 @@ static int test_validate_len(void){
 
     return 0;
 }
-
-// TODO: aggiungere in main() le chiamate ai test sopra quando implementati
 
 //MAIN con chiamata di ogni test
 int main(void){

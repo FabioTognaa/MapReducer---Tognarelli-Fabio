@@ -274,7 +274,7 @@ int mr_read_line(int fd, mr_file_line_t *out){
     }
     fbuf[file_name_len] = '\0';
 
-    /* riga vuota: line non NULL, line_len == 0 */
+    // riga vuota: line non NULL, line_len == 0 
     char *lbuf = malloc(line_len + 1);
     if(!lbuf){
         errno = ENOMEM;

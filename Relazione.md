@@ -28,15 +28,6 @@ _Fabio Tognarelli, 693132_
 )
 ```
 
-<!--
-NOTE DI STESURA (togliere dal PDF)
-- Tetto 10 pagine.
-- Non ripetere la spec (modello MapReduce, elenco vincoli, firma di mr.h).
-- Uso, tree, esempio word-count: README, non qui.
-- Etichette *Scelta* / *Perché* solo dove indicate. Niente alternative scartate.
-- Una figura, in sezione 1. Struct solo in sezioni 5, 6, 7.
--->
-
 ## 1. Architettura generale
 
 In questa sezione iniziale viene presentato il progetto, compreso della sua architettura e dei processi principali.
